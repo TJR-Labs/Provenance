@@ -4,8 +4,10 @@ import { type Metadata } from "next";
 import Link from "next/link";
 
 import { Role } from "../../generated/prisma";
+import { getServerCaller } from "~/server/api/caller";
 import { auth, signOut } from "~/server/auth";
 import { TRPCReactProvider } from "~/trpc/react";
+import { UnreadMessageBadge } from "./unread-message-badge";
 
 export const metadata: Metadata = {
   title: "Provenance",
@@ -17,6 +19,10 @@ export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   const session = await auth();
+  const unreadCount =
+    session?.user.role === Role.ENGINEER
+      ? await (await getServerCaller()).message.unreadCount()
+      : 0;
 
   return (
     <html lang="en">
@@ -44,11 +50,28 @@ export default async function RootLayout({
                         Briefs
                       </Link>
                       {session.user.role === Role.COMPANY ? (
+                        <>
+                          <Link
+                            href="/company"
+                            className="text-slate-300 hover:text-white"
+                          >
+                            Company
+                          </Link>
+                          <Link
+                            href="/scout"
+                            className="text-slate-300 hover:text-white"
+                          >
+                            Scout
+                          </Link>
+                        </>
+                      ) : null}
+                      {session.user.role === Role.ENGINEER ? (
                         <Link
-                          href="/company"
-                          className="text-slate-300 hover:text-white"
+                          href="/inbox"
+                          className="inline-flex items-center gap-2 text-slate-300 hover:text-white"
                         >
-                          Company
+                          Inbox
+                          <UnreadMessageBadge initialCount={unreadCount} />
                         </Link>
                       ) : null}
                       {session.user.role === Role.ADMIN ? (

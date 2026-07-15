@@ -84,3 +84,16 @@ npm test
 ```
 
 `npm run build` performs the production build and type checking. `npm test` runs the Vitest unit suite once and returns a nonzero exit code if a test fails.
+
+## Full-loop walkthrough
+
+This walkthrough exercises the complete Provenance flow with three accounts. It assumes the database schema has been created and the app is running locally.
+
+1. **Seed the admin.** Run `npx prisma db seed`, then sign in as `admin` with the configured or generated administrator password.
+2. **Create users.** Open **Users** and create one `COMPANY` account and one `ENGINEER` account. Record their initial passwords.
+3. **Post a brief.** Log out, sign in as the company, open **Company**, and choose **Post a brief**. Complete the brief form; its default weighted rubric is created automatically.
+4. **Submit work.** Log out, sign in as the engineer, open **Briefs**, select the new brief, and submit a repository URL and writeup.
+5. **Score the submission.** Log back in as the company, open the brief from **Company**, score every rubric criterion, and save the evaluation. The weighted percentage appears in the brief ranking.
+6. **Scout the engineer.** Open **Scout**. The submission appears in the company-wide table, ordered with fully scored work first by weighted percentage, followed by partial and unscored work.
+7. **Send outreach.** Enter a plain-text message in the submission row and choose **Reach out**. The same outreach action is also available on the engineer profile linked from the table. Sent messages remain visible below the scout table.
+8. **Read the inbox.** Log back in as the engineer. The navigation shows an unread count beside **Inbox**. Open **Inbox** to view the company, related brief when present, message, and date; opening the inbox marks all messages read, so the badge is cleared on subsequent navigation.

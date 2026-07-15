@@ -30,15 +30,17 @@ enum BriefStatus {
 }
 
 model User {
-  id           String       @id @default(cuid())
-  username     String       @unique
-  passwordHash String
-  role         Role
-  displayName  String
-  companyName  String?
-  createdAt    DateTime     @default(now())
-  briefs       Brief[]
-  submissions  Submission[]
+  id            String       @id @default(cuid())
+  username      String       @unique
+  passwordHash  String
+  role          Role
+  displayName   String
+  companyName   String?
+  createdAt     DateTime     @default(now())
+  briefs        Brief[]
+  submissions   Submission[]
+  sentMessages  Message[]    @relation("CompanyMessages")
+  inboxMessages Message[]    @relation("EngineerMessages")
 }
 
 model Brief {
@@ -55,6 +57,7 @@ model Brief {
   closedAt     DateTime?
   submissions  Submission[]
   criteria     RubricCriterion[]
+  messages     Message[]
 
   @@index([companyId])
   @@index([status, domain, createdAt])
@@ -99,4 +102,22 @@ model Score {
 
   @@unique([submissionId, criterionId])
   @@index([criterionId])
+}
+
+model Message {
+  id            String    @id @default(cuid())
+  fromCompanyId String
+  fromCompany   User      @relation("CompanyMessages", fields: [fromCompanyId], references: [id])
+  toEngineerId  String
+  toEngineer    User      @relation("EngineerMessages", fields: [toEngineerId], references: [id])
+  briefId       String?
+  brief         Brief?    @relation(fields: [briefId], references: [id])
+  body          String
+  createdAt     DateTime  @default(now())
+  readAt        DateTime?
+
+  @@index([fromCompanyId, createdAt])
+  @@index([toEngineerId, createdAt])
+  @@index([toEngineerId, readAt])
+  @@index([briefId])
 }

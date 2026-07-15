@@ -98,6 +98,32 @@ export type SubmissionEvaluation = {
   percentage: number | null;
 };
 
+type RankedSubmission = SubmissionEvaluation & { createdAt: Date };
+
+export function compareRankedSubmissions(
+  left: RankedSubmission,
+  right: RankedSubmission,
+) {
+  const rank = {
+    FULLY_SCORED: 0,
+    PARTIALLY_SCORED: 1,
+    UNSCORED: 2,
+  } satisfies Record<ScoringStatus, number>;
+
+  const statusDifference = rank[left.scoringStatus] - rank[right.scoringStatus];
+  if (statusDifference) return statusDifference;
+
+  if (
+    left.scoringStatus === "FULLY_SCORED" &&
+    right.scoringStatus === "FULLY_SCORED" &&
+    left.percentage !== right.percentage
+  ) {
+    return right.percentage! - left.percentage!;
+  }
+
+  return left.createdAt.getTime() - right.createdAt.getTime();
+}
+
 export function calculateWeightedPercentage(
   criteria: readonly EvaluationCriterion[],
   scores: readonly EvaluationScore[],
@@ -151,32 +177,12 @@ export function classifySubmission(
 export function rankSubmissions<
   T extends { createdAt: Date; scores: readonly EvaluationScore[] },
 >(criteria: readonly EvaluationCriterion[], submissions: readonly T[]) {
-  const rank = {
-    FULLY_SCORED: 0,
-    PARTIALLY_SCORED: 1,
-    UNSCORED: 2,
-  } satisfies Record<ScoringStatus, number>;
-
   return submissions
     .map((submission) => ({
       ...submission,
       ...classifySubmission(criteria, submission.scores),
     }))
-    .sort((left, right) => {
-      const statusDifference =
-        rank[left.scoringStatus] - rank[right.scoringStatus];
-      if (statusDifference) return statusDifference;
-
-      if (
-        left.scoringStatus === "FULLY_SCORED" &&
-        right.scoringStatus === "FULLY_SCORED" &&
-        left.percentage !== right.percentage
-      ) {
-        return right.percentage! - left.percentage!;
-      }
-
-      return left.createdAt.getTime() - right.createdAt.getTime();
-    });
+    .sort(compareRankedSubmissions);
 }
 
 async function requireBriefOwnership(
