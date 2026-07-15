@@ -30,29 +30,46 @@ enum BriefStatus {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  username     String   @unique
+  id           String       @id @default(cuid())
+  username     String       @unique
   passwordHash String
   role         Role
   displayName  String
   companyName  String?
-  createdAt    DateTime @default(now())
+  createdAt    DateTime     @default(now())
   briefs       Brief[]
+  submissions  Submission[]
 }
 
 model Brief {
-  id           String      @id @default(cuid())
+  id           String       @id @default(cuid())
   companyId    String
-  company      User        @relation(fields: [companyId], references: [id])
+  company      User         @relation(fields: [companyId], references: [id])
   title        String
   summary      String
   description  String
   domain       BriefDomain
   deliverables String
-  status       BriefStatus @default(OPEN)
-  createdAt    DateTime    @default(now())
+  status       BriefStatus  @default(OPEN)
+  createdAt    DateTime     @default(now())
   closedAt     DateTime?
+  submissions  Submission[]
 
   @@index([companyId])
   @@index([status, domain, createdAt])
+}
+
+model Submission {
+  id         String   @id @default(cuid())
+  briefId    String
+  brief      Brief    @relation(fields: [briefId], references: [id])
+  engineerId String
+  engineer   User     @relation(fields: [engineerId], references: [id])
+  repoUrl    String
+  demoUrl    String?
+  writeup    String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([briefId, engineerId])
 }

@@ -69,6 +69,11 @@ const briefDetailSelect = {
   deliverables: true,
 } as const;
 
+const companyBriefListSelect = {
+  ...briefListSelect,
+  _count: { select: { submissions: true } },
+} as const;
+
 async function requireOwnership(
   id: string,
   companyId: string,
@@ -194,6 +199,6 @@ export function listCompanyBriefs(
   return briefs.findMany({
     where: { companyId },
     orderBy: { createdAt: "desc" },
-    select: briefListSelect,
+    select: companyBriefListSelect,
   });
 }

@@ -67,6 +67,7 @@ export default async function CompanyPage({ searchParams }: CompanyPageProps) {
                 <th className="px-4 py-3 font-medium">Brief</th>
                 <th className="px-4 py-3 font-medium">Domain</th>
                 <th className="px-4 py-3 font-medium">Status</th>
+                <th className="px-4 py-3 font-medium">Submissions</th>
                 <th className="px-4 py-3 font-medium">Posted</th>
                 <th className="px-4 py-3 font-medium">Actions</th>
               </tr>
@@ -98,6 +99,9 @@ export default async function CompanyPage({ searchParams }: CompanyPageProps) {
                     >
                       {brief.status === "OPEN" ? "Open" : "Closed"}
                     </span>
+                  </td>
+                  <td className="px-4 py-4 text-slate-300">
+                    {brief._count.submissions}
                   </td>
                   <td className="px-4 py-4 text-slate-400">
                     {dateFormatter.format(brief.createdAt)}
