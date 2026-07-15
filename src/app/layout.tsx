@@ -37,6 +37,20 @@ export default async function RootLayout({
                 <div className="flex items-center gap-5 text-sm">
                   {session ? (
                     <>
+                      <Link
+                        href="/briefs"
+                        className="text-slate-300 hover:text-white"
+                      >
+                        Briefs
+                      </Link>
+                      {session.user.role === Role.COMPANY ? (
+                        <Link
+                          href="/company"
+                          className="text-slate-300 hover:text-white"
+                        >
+                          Company
+                        </Link>
+                      ) : null}
                       {session.user.role === Role.ADMIN ? (
                         <Link
                           href="/admin/users"

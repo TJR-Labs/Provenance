@@ -18,6 +18,17 @@ enum Role {
   ENGINEER
 }
 
+enum BriefDomain {
+  SOFTWARE
+  ML_AI
+  HARDWARE_ROBOTICS
+}
+
+enum BriefStatus {
+  OPEN
+  CLOSED
+}
+
 model User {
   id           String   @id @default(cuid())
   username     String   @unique
@@ -26,4 +37,22 @@ model User {
   displayName  String
   companyName  String?
   createdAt    DateTime @default(now())
+  briefs       Brief[]
+}
+
+model Brief {
+  id           String      @id @default(cuid())
+  companyId    String
+  company      User        @relation(fields: [companyId], references: [id])
+  title        String
+  summary      String
+  description  String
+  domain       BriefDomain
+  deliverables String
+  status       BriefStatus @default(OPEN)
+  createdAt    DateTime    @default(now())
+  closedAt     DateTime?
+
+  @@index([companyId])
+  @@index([status, domain, createdAt])
 }
