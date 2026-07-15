@@ -60,3 +60,75 @@ export async function updateBriefAction(
   revalidatePath("/company");
   redirect(`/briefs/${id}`);
 }
+
+function readCriterion(formData: FormData) {
+  return {
+    name: getString(formData, "name"),
+    weight: Number(getString(formData, "weight")),
+  };
+}
+
+function handleEvaluationError(error: unknown, briefId: string): never {
+  if (error instanceof TRPCError) {
+    if (error.code === "FORBIDDEN") forbidden();
+    if (error.code === "NOT_FOUND") notFound();
+    if (error.code === "BAD_REQUEST") {
+      redirect(
+        `/briefs/${briefId}/edit?rubricError=${encodeURIComponent(error.message)}`,
+      );
+    }
+  }
+  redirect(
+    `/briefs/${briefId}/edit?rubricError=${encodeURIComponent("Unable to update the rubric.")}`,
+  );
+}
+
+function refreshRubric(briefId: string, result: string): never {
+  revalidatePath(`/briefs/${briefId}`);
+  revalidatePath(`/briefs/${briefId}/edit`);
+  redirect(`/briefs/${briefId}/edit?rubric=${result}`);
+}
+
+export async function addCriterionAction(briefId: string, formData: FormData) {
+  try {
+    await (
+      await getServerCaller()
+    ).evaluation.addCriterion({ briefId, ...readCriterion(formData) });
+  } catch (error) {
+    handleEvaluationError(error, briefId);
+  }
+
+  refreshRubric(briefId, "added");
+}
+
+export async function updateCriterionAction(
+  briefId: string,
+  criterionId: string,
+  formData: FormData,
+) {
+  try {
+    await (
+      await getServerCaller()
+    ).evaluation.updateCriterion({
+      criterionId,
+      ...readCriterion(formData),
+    });
+  } catch (error) {
+    handleEvaluationError(error, briefId);
+  }
+
+  refreshRubric(briefId, "updated");
+}
+
+export async function removeCriterionAction(
+  briefId: string,
+  criterionId: string,
+) {
+  try {
+    await (await getServerCaller()).evaluation.removeCriterion({ criterionId });
+  } catch (error) {
+    handleEvaluationError(error, briefId);
+  }
+
+  refreshRubric(briefId, "removed");
+}

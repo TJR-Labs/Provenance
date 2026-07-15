@@ -5,6 +5,7 @@ vi.mock("~/server/db", () => ({ db: {} }));
 
 import { BriefDomain, BriefStatus, Role } from "../../../../generated/prisma";
 import { briefRouter } from "~/server/api/routers/brief";
+import { defaultRubricCriteria } from "~/server/briefs";
 
 const validBrief = {
   title: "Build a telemetry pipeline",
@@ -35,6 +36,17 @@ function caller(brief: Record<string, unknown>, id = "company-1") {
 }
 
 describe("brief router", () => {
+  it("attaches the default rubric when creating a brief", async () => {
+    const create = vi.fn(async (_args: unknown) => ({ id: "brief-1" }));
+    const brief = { create };
+
+    await caller(brief).create(validBrief);
+
+    expect(create.mock.calls[0]?.[0]).toMatchObject({
+      data: { criteria: { create: [...defaultRubricCriteria] } },
+    });
+  });
+
   it.each(["update", "close"] as const)(
     "returns FORBIDDEN when a non-owner tries to %s a brief",
     async (operation) => {

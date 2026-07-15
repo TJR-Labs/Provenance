@@ -37,6 +37,12 @@ export const updateBriefInputSchema = briefFieldsSchema.extend({
 
 export type BriefFields = z.infer<typeof briefFieldsSchema>;
 
+export const defaultRubricCriteria = [
+  { name: "Works end-to-end", weight: 5 },
+  { name: "Code quality", weight: 3 },
+  { name: "Docs & reproducibility", weight: 2 },
+] as const;
+
 export class BriefNotFoundError extends Error {
   constructor() {
     super("Brief not found.");
@@ -110,6 +116,7 @@ export async function createBrief(
       ...input,
       companyId,
       status: BriefStatus.OPEN,
+      criteria: { create: [...defaultRubricCriteria] },
     },
     select: briefDetailSelect,
   });

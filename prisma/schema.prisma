@@ -42,34 +42,61 @@ model User {
 }
 
 model Brief {
-  id           String       @id @default(cuid())
+  id           String            @id @default(cuid())
   companyId    String
-  company      User         @relation(fields: [companyId], references: [id])
+  company      User              @relation(fields: [companyId], references: [id])
   title        String
   summary      String
   description  String
   domain       BriefDomain
   deliverables String
-  status       BriefStatus  @default(OPEN)
-  createdAt    DateTime     @default(now())
+  status       BriefStatus       @default(OPEN)
+  createdAt    DateTime          @default(now())
   closedAt     DateTime?
   submissions  Submission[]
+  criteria     RubricCriterion[]
 
   @@index([companyId])
   @@index([status, domain, createdAt])
 }
 
 model Submission {
-  id         String   @id @default(cuid())
-  briefId    String
-  brief      Brief    @relation(fields: [briefId], references: [id])
-  engineerId String
-  engineer   User     @relation(fields: [engineerId], references: [id])
-  repoUrl    String
-  demoUrl    String?
-  writeup    String
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id           String   @id @default(cuid())
+  briefId      String
+  brief        Brief    @relation(fields: [briefId], references: [id])
+  engineerId   String
+  engineer     User     @relation(fields: [engineerId], references: [id])
+  repoUrl      String
+  demoUrl      String?
+  writeup      String
+  feedbackNote String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  scores       Score[]
 
   @@unique([briefId, engineerId])
+}
+
+model RubricCriterion {
+  id        String   @id @default(cuid())
+  briefId   String
+  brief     Brief    @relation(fields: [briefId], references: [id], onDelete: Cascade)
+  name      String
+  weight    Int
+  createdAt DateTime @default(now())
+  scores    Score[]
+
+  @@index([briefId, createdAt])
+}
+
+model Score {
+  id           String          @id @default(cuid())
+  submissionId String
+  submission   Submission      @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  criterionId  String
+  criterion    RubricCriterion @relation(fields: [criterionId], references: [id], onDelete: Cascade)
+  value        Int
+
+  @@unique([submissionId, criterionId])
+  @@index([criterionId])
 }

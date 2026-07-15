@@ -2,7 +2,7 @@
 
 import { TRPCError } from "@trpc/server";
 import { revalidatePath } from "next/cache";
-import { forbidden, notFound } from "next/navigation";
+import { forbidden, notFound, redirect } from "next/navigation";
 
 import type {
   SubmissionFormState,
@@ -63,4 +63,42 @@ export async function upsertSubmissionAction(
 
   revalidatePath(`/briefs/${briefId}`);
   return { values, success: true };
+}
+
+export async function scoreSubmissionAction(
+  briefId: string,
+  submissionId: string,
+  formData: FormData,
+) {
+  const scores = [...formData.entries()]
+    .filter(([name]) => name.startsWith("score:"))
+    .map(([name, value]) => ({
+      criterionId: name.slice("score:".length),
+      value: typeof value === "string" ? Number(value) : Number.NaN,
+    }));
+  const feedback = formData.get("feedbackNote");
+  const feedbackNote =
+    typeof feedback === "string" && feedback.trim() ? feedback.trim() : null;
+
+  try {
+    await (
+      await getServerCaller()
+    ).evaluation.scoreSubmission({ submissionId, scores, feedbackNote });
+  } catch (error) {
+    if (error instanceof TRPCError) {
+      if (error.code === "FORBIDDEN") forbidden();
+      if (error.code === "NOT_FOUND") notFound();
+      if (error.code === "BAD_REQUEST") {
+        redirect(
+          `/briefs/${briefId}?evaluationError=${encodeURIComponent(error.message)}`,
+        );
+      }
+    }
+    redirect(
+      `/briefs/${briefId}?evaluationError=${encodeURIComponent("Unable to save the evaluation.")}`,
+    );
+  }
+
+  revalidatePath(`/briefs/${briefId}`);
+  redirect(`/briefs/${briefId}?evaluation=saved`);
 }

@@ -1,4 +1,5 @@
 import { briefRouter } from "~/server/api/routers/brief";
+import { evaluationRouter } from "~/server/api/routers/evaluation";
 import { healthRouter } from "~/server/api/routers/health";
 import { submissionRouter } from "~/server/api/routers/submission";
 import { usersRouter } from "~/server/api/routers/users";
@@ -11,6 +12,7 @@ import { createCallerFactory, createTRPCRouter } from "~/server/api/trpc";
  */
 export const appRouter = createTRPCRouter({
   brief: briefRouter,
+  evaluation: evaluationRouter,
   health: healthRouter,
   submission: submissionRouter,
   users: usersRouter,
