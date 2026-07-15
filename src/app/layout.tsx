@@ -3,6 +3,8 @@ import "~/styles/globals.css";
 import { type Metadata } from "next";
 import Link from "next/link";
 
+import { Role } from "../../generated/prisma";
+import { auth, signOut } from "~/server/auth";
 import { TRPCReactProvider } from "~/trpc/react";
 
 export const metadata: Metadata = {
@@ -11,9 +13,11 @@ export const metadata: Metadata = {
   icons: [{ rel: "icon", url: "/favicon.ico" }],
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  const session = await auth();
+
   return (
     <html lang="en">
       <body className="min-h-screen bg-slate-950 text-slate-100 antialiased">
@@ -30,10 +34,54 @@ export default function RootLayout({
                 >
                   Provenance
                 </Link>
-                <div
-                  data-slot="nav-links"
-                  className="flex items-center gap-6"
-                />
+                <div className="flex items-center gap-5 text-sm">
+                  {session ? (
+                    <>
+                      {session.user.role === Role.ADMIN ? (
+                        <Link
+                          href="/admin/users"
+                          className="text-slate-300 hover:text-white"
+                        >
+                          Users
+                        </Link>
+                      ) : null}
+                      <Link
+                        href="/account"
+                        className="text-slate-300 hover:text-white"
+                      >
+                        Account
+                      </Link>
+                      <span className="hidden text-right sm:block">
+                        <span className="block text-slate-100">
+                          {session.user.displayName}
+                        </span>
+                        <span className="block text-xs text-slate-400">
+                          {session.user.role}
+                        </span>
+                      </span>
+                      <form
+                        action={async () => {
+                          "use server";
+                          await signOut({ redirectTo: "/" });
+                        }}
+                      >
+                        <button
+                          type="submit"
+                          className="text-slate-300 hover:text-white"
+                        >
+                          Log out
+                        </button>
+                      </form>
+                    </>
+                  ) : (
+                    <Link
+                      href="/login"
+                      className="text-slate-300 hover:text-white"
+                    >
+                      Log in
+                    </Link>
+                  )}
+                </div>
               </nav>
             </header>
             <main className="flex flex-1 flex-col">{children}</main>
