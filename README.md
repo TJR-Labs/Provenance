@@ -52,6 +52,22 @@ npx prisma db push
 
 Prisma uses `DIRECT_URL` for this command and `DATABASE_URL` for application traffic.
 
+### Schema changes and migrations
+
+`prisma db push` above is for quick local prototyping only — it is not how schema
+changes reach production. To change the schema going forward:
+
+```powershell
+npx prisma migrate dev --name <describe-the-change>
+```
+
+This updates your local database and writes a new folder under
+`prisma/migrations/`. Commit that folder. On deploy, Vercel runs
+`npm run vercel-build` (`prisma migrate deploy && next build`, wired via
+`vercel.json`), which applies any new migrations automatically before building.
+The plain `npm run build` script (used locally and by CI) stays a plain
+`next build` and does not touch the database.
+
 ### Seed the administrator
 
 Seed the first administrator after creating the schema:
