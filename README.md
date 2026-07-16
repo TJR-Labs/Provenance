@@ -105,6 +105,10 @@ npm test
 
 `npm run build` performs the production build and type checking. `npm test` runs the Vitest unit suite once and returns a nonzero exit code if a test fails.
 
+### Legal page placeholders
+
+The public `/terms` and `/privacy` pages are structural placeholders, not reviewed legal content. Before launch, counsel must review the page outlines and every bracketed placeholder must be replaced with approved copy.
+
 ### Continuous integration
 
 GitHub Actions runs CI automatically on every push to `main` and every pull request targeting `main`. The workflow checks linting, type checking, tests, and the production build.

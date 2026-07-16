@@ -122,8 +122,18 @@ export default async function RootLayout({
               </nav>
             </header>
             <main className="flex flex-1 flex-col">{children}</main>
-            <footer className="border-t border-slate-800 px-6 py-6 text-center text-sm text-slate-400">
-              Provenance
+            <footer className="border-t border-slate-800 px-6 py-6 text-sm text-slate-400">
+              <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-center gap-3 sm:flex-row sm:gap-5">
+                <span>Provenance</span>
+                <nav aria-label="Legal navigation" className="flex gap-5">
+                  <Link href="/terms" className="transition hover:text-white">
+                    Terms
+                  </Link>
+                  <Link href="/privacy" className="transition hover:text-white">
+                    Privacy
+                  </Link>
+                </nav>
+              </div>
             </footer>
           </div>
         </TRPCReactProvider>
