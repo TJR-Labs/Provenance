@@ -10,10 +10,10 @@ export default async function NewProjectPage({
   const { error } = await searchParams;
   return (
     <section className="mx-auto w-full max-w-3xl px-6 py-14">
-      <h1 className="text-3xl font-bold tracking-tight text-white">
+      <h1 className="font-display text-ink text-3xl font-semibold tracking-tight">
         New project
       </h1>
-      <p className="mt-2 text-slate-400">
+      <p className="text-muted mt-2">
         Share what you made and how you made it.
       </p>
       <ProjectForm

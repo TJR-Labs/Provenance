@@ -23,21 +23,24 @@ export default async function Home({ searchParams }: HomeProps) {
   return (
     <section className="mx-auto w-full max-w-6xl px-6 py-14">
       <div className="max-w-3xl">
-        <h1 className="text-4xl font-bold tracking-tight text-white sm:text-5xl">
+        <p className="text-brass font-mono text-xs tracking-[0.14em] uppercase">
+          Discovery
+        </p>
+        <h1 className="font-display text-ink mt-3 text-4xl font-semibold tracking-tight sm:text-5xl">
           Discover what people are building
         </h1>
-        <p className="mt-4 text-lg leading-8 text-slate-300">
+        <p className="text-muted mt-4 text-lg leading-8">
           Explore software, art, hardware, writing, and everything in between.
         </p>
       </div>
 
-      <form className="mt-10 grid gap-4 rounded-xl border border-slate-800 bg-slate-900 p-5 sm:grid-cols-[1fr_1fr_auto]">
-        <label className="text-sm font-medium text-slate-200">
+      <form className="border-line bg-surface mt-10 grid gap-4 rounded-lg border p-5 sm:grid-cols-[1fr_1fr_auto]">
+        <label className="text-ink text-sm font-medium">
           Category
           <select
             name="category"
             defaultValue={category ?? ""}
-            className="mt-2 block w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+            className="border-line-strong bg-canvas text-ink mt-2 block w-full rounded-md border px-3 py-2"
           >
             <option value="">All categories</option>
             {categories.map((value) => (
@@ -47,16 +50,16 @@ export default async function Home({ searchParams }: HomeProps) {
             ))}
           </select>
         </label>
-        <label className="text-sm font-medium text-slate-200">
+        <label className="text-ink text-sm font-medium">
           Hashtag
           <input
             name="hashtag"
             defaultValue={hashtag}
             placeholder="robotics"
-            className="mt-2 block w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+            className="border-line-strong bg-canvas text-ink placeholder:text-faint focus:border-accent mt-2 block w-full rounded-md border px-3 py-2"
           />
         </label>
-        <button className="self-end rounded-md bg-sky-400 px-5 py-2 font-semibold text-slate-950 hover:bg-sky-300">
+        <button className="bg-accent text-on-accent hover:bg-accent-strong self-end rounded-md px-5 py-2 font-semibold transition-colors">
           Filter
         </button>
       </form>
@@ -68,9 +71,14 @@ export default async function Home({ searchParams }: HomeProps) {
           ))}
         </div>
       ) : (
-        <p className="mt-12 rounded-xl border border-dashed border-slate-700 px-6 py-14 text-center text-slate-400">
-          No projects match these filters yet.
-        </p>
+        <div className="border-line-strong mt-12 rounded-lg border border-dashed px-6 py-16 text-center">
+          <p className="text-faint font-mono text-xs tracking-[0.14em] uppercase">
+            No matching records
+          </p>
+          <p className="text-muted mt-3">
+            No projects match these filters yet.
+          </p>
+        </div>
       )}
     </section>
   );

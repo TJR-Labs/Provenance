@@ -47,14 +47,16 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
   return (
     <section className="flex flex-1 items-center justify-center px-6 py-24">
-      <div className="w-full max-w-md rounded-xl border border-slate-800 bg-slate-900 p-8 shadow-xl">
-        <h1 className="text-3xl font-bold tracking-tight text-white">Log in</h1>
-        <p className="mt-2 text-sm text-slate-400">
+      <div className="border-line bg-surface w-full max-w-md rounded-lg border p-8 shadow-sm">
+        <h1 className="font-display text-ink text-3xl font-semibold tracking-tight">
+          Log in
+        </h1>
+        <p className="text-muted mt-2 text-sm">
           Use your Provenance username and password.
         </p>
 
         {params.created ? (
-          <p className="mt-6 rounded-md border border-emerald-900 bg-emerald-950/50 px-4 py-3 text-sm text-emerald-200">
+          <p className="border-success-line bg-success-surface text-success mt-6 rounded-md border px-4 py-3 text-sm">
             Account created. You can log in now.
           </p>
         ) : null}
@@ -62,14 +64,14 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         {showError ? (
           <p
             role="alert"
-            className="mt-6 rounded-md border border-red-900 bg-red-950/50 px-4 py-3 text-sm text-red-200"
+            className="border-danger-line bg-danger-surface text-danger mt-6 rounded-md border px-4 py-3 text-sm"
           >
             Invalid username or password.
           </p>
         ) : null}
 
         <form action={login} className="mt-6 space-y-5">
-          <label className="block text-sm font-medium text-slate-200">
+          <label className="text-ink block text-sm font-medium">
             Username
             <input
               name="username"
@@ -77,22 +79,22 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
               required
               autoComplete="username"
               autoFocus
-              className="mt-2 block w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-white outline-none focus:border-sky-400"
+              className="border-line-strong bg-canvas text-ink focus:border-accent mt-2 block w-full rounded-md border px-3 py-2"
             />
           </label>
-          <label className="block text-sm font-medium text-slate-200">
+          <label className="text-ink block text-sm font-medium">
             Password
             <input
               name="password"
               type="password"
               required
               autoComplete="current-password"
-              className="mt-2 block w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-white outline-none focus:border-sky-400"
+              className="border-line-strong bg-canvas text-ink focus:border-accent mt-2 block w-full rounded-md border px-3 py-2"
             />
           </label>
           <button
             type="submit"
-            className="w-full rounded-md bg-sky-400 px-4 py-2 font-semibold text-slate-950 transition hover:bg-sky-300"
+            className="bg-accent text-on-accent hover:bg-accent-strong w-full rounded-md px-4 py-2 font-semibold transition-colors"
           >
             Log in
           </button>

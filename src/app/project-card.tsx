@@ -18,37 +18,40 @@ type ProjectCardProps = {
 
 export function ProjectCard({ project }: ProjectCardProps) {
   return (
-    <article className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
+    <article className="border-line bg-surface hover:border-line-strong flex flex-col overflow-hidden rounded-lg border transition-colors">
       {project.media[0] ? (
-        <div className="h-52 bg-slate-950">
+        <div className="border-line bg-raised h-52 border-b">
           <ProjectMedia media={project.media[0]} title={project.title} />
         </div>
       ) : (
-        <div className="flex h-32 items-center justify-center bg-slate-950 text-sm text-slate-500">
-          This project has no media
+        <div className="border-line bg-raised text-muted flex h-32 items-center justify-center border-b font-mono text-xs tracking-[0.14em] uppercase">
+          No media on record
         </div>
       )}
       <div className="p-5">
-        <p className="text-xs font-semibold tracking-wide text-sky-300 uppercase">
+        <p className="text-brass font-mono text-xs tracking-[0.14em] uppercase">
           {categoryLabels[project.category]}
         </p>
-        <h2 className="mt-2 text-xl font-semibold text-white">
-          <Link href={`/projects/${project.id}`} className="hover:text-sky-300">
+        <h2 className="font-display text-ink mt-2 line-clamp-2 text-xl font-semibold break-words">
+          <Link
+            href={`/projects/${project.id}`}
+            className="hover:text-accent transition-colors"
+          >
             {project.title}
           </Link>
         </h2>
         {project.user ? (
-          <p className="mt-1 text-sm text-slate-400">
+          <p className="text-muted mt-1 truncate text-sm">
             by{" "}
             <Link
               href={`/${project.user.username}`}
-              className="hover:text-white"
+              className="hover:text-ink transition-colors"
             >
               {project.user.displayName}
             </Link>
           </p>
         ) : null}
-        <p className="mt-3 line-clamp-3 text-sm leading-6 text-slate-300">
+        <p className="text-muted mt-3 line-clamp-3 text-sm leading-6 break-words">
           {project.description}
         </p>
         {project.hashtags.length ? (
@@ -57,7 +60,7 @@ export function ProjectCard({ project }: ProjectCardProps) {
               <Link
                 key={tag}
                 href={`/?hashtag=${encodeURIComponent(tag)}`}
-                className="rounded-full bg-slate-800 px-2.5 py-1 text-xs text-slate-300 hover:text-white"
+                className="bg-raised text-muted hover:text-accent max-w-full truncate rounded-full px-2.5 py-1 font-mono text-xs transition-colors"
               >
                 #{tag}
               </Link>

@@ -1,6 +1,228 @@
 @import "tailwindcss";
 
-@theme {
-  --font-sans: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji",
-    "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme inline {
+  --font-sans:
+    var(--font-spline-sans), ui-sans-serif, system-ui, sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-display: var(--font-newsreader), Georgia, "Times New Roman", serif;
+  --font-mono:
+    var(--font-spline-mono), ui-monospace, SFMono-Regular, Menlo, Consolas,
+    monospace;
+
+  --color-canvas: var(--pv-canvas);
+  --color-surface: var(--pv-surface);
+  --color-raised: var(--pv-raised);
+  --color-ink: var(--pv-ink);
+  --color-muted: var(--pv-muted);
+  --color-faint: var(--pv-faint);
+  --color-line: var(--pv-line);
+  --color-line-strong: var(--pv-line-strong);
+  --color-accent: var(--pv-accent);
+  --color-accent-strong: var(--pv-accent-strong);
+  --color-on-accent: var(--pv-on-accent);
+  --color-brass: var(--pv-brass);
+  --color-danger: var(--pv-danger);
+  --color-danger-solid: var(--pv-danger-solid);
+  --color-danger-hover: var(--pv-danger-hover);
+  --color-on-danger: var(--pv-on-danger);
+  --color-danger-surface: var(--pv-danger-surface);
+  --color-danger-line: var(--pv-danger-line);
+  --color-success: var(--pv-success);
+  --color-success-surface: var(--pv-success-surface);
+  --color-success-line: var(--pv-success-line);
+  --color-warning: var(--pv-warning);
+  --color-warning-surface: var(--pv-warning-surface);
+  --color-warning-line: var(--pv-warning-line);
+}
+
+/*
+ * Provenance design tokens — "The Archive".
+ * Light: the reading room. Sage-tinted paper, viridian ink, brass fittings.
+ * Dark: the archive after hours. Green-black stacks, paper-white text.
+ * Switched via data-theme="light" | "dark" on <html>.
+ */
+:root {
+  color-scheme: light;
+
+  --pv-canvas: #f3f3ed;
+  --pv-surface: #fbfbf8;
+  --pv-raised: #e9eae1;
+  --pv-ink: #21261f;
+  --pv-muted: #4e574e;
+  --pv-faint: #667066;
+  --pv-line: #dddfd3;
+  --pv-line-strong: #b4baaa;
+  --pv-accent: #20674c;
+  --pv-accent-strong: #174f3a;
+  --pv-on-accent: #f5f7f0;
+  --pv-brass: #8a5b22;
+  --pv-danger: #a63b2a;
+  --pv-danger-solid: #a03828;
+  --pv-danger-hover: #8b2f20;
+  --pv-on-danger: #fff6f2;
+  --pv-danger-surface: #f7e7e2;
+  --pv-danger-line: #e0b7ac;
+  --pv-success: #23684a;
+  --pv-success-surface: #e4efe6;
+  --pv-success-line: #b9d4c0;
+  --pv-warning: #7a5416;
+  --pv-warning-surface: #f4ead3;
+  --pv-warning-line: #dcc490;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --pv-canvas: #131714;
+  --pv-surface: #1b201c;
+  --pv-raised: #252c26;
+  --pv-ink: #e9e7db;
+  --pv-muted: #a9b1a4;
+  --pv-faint: #859082;
+  --pv-line: #2a322b;
+  --pv-line-strong: #40493f;
+  --pv-accent: #5fc694;
+  --pv-accent-strong: #82d6ae;
+  --pv-on-accent: #0e2419;
+  --pv-brass: #cfa45e;
+  --pv-danger: #e28a77;
+  --pv-danger-solid: #b04b36;
+  --pv-danger-hover: #c25a43;
+  --pv-on-danger: #fff3ee;
+  --pv-danger-surface: #2e1b15;
+  --pv-danger-line: #553026;
+  --pv-success: #7fcfa4;
+  --pv-success-surface: #17281e;
+  --pv-success-line: #2e4a38;
+  --pv-warning: #ddb56a;
+  --pv-warning-surface: #2b2413;
+  --pv-warning-line: #514222;
+}
+
+/* No-JS / pre-hydration fallback: honor the system preference until the
+   inline theme script stamps an explicit data-theme. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --pv-canvas: #131714;
+    --pv-surface: #1b201c;
+    --pv-raised: #252c26;
+    --pv-ink: #e9e7db;
+    --pv-muted: #a9b1a4;
+    --pv-faint: #859082;
+    --pv-line: #2a322b;
+    --pv-line-strong: #40493f;
+    --pv-accent: #5fc694;
+    --pv-accent-strong: #82d6ae;
+    --pv-on-accent: #0e2419;
+    --pv-brass: #cfa45e;
+    --pv-danger: #e28a77;
+    --pv-danger-solid: #b04b36;
+    --pv-danger-hover: #c25a43;
+    --pv-on-danger: #fff3ee;
+    --pv-danger-surface: #2e1b15;
+    --pv-danger-line: #553026;
+    --pv-success: #7fcfa4;
+    --pv-success-surface: #17281e;
+    --pv-success-line: #2e4a38;
+    --pv-warning: #ddb56a;
+    --pv-warning-surface: #2b2413;
+    --pv-warning-line: #514222;
+  }
+}
+
+/*
+ * Per-profile theme skins ([username] pages). These override the token set
+ * for the profile subtree, so every nested component follows the skin.
+ */
+.profile-theme-paper {
+  color-scheme: light;
+
+  --pv-canvas: #f6f1e6;
+  --pv-surface: #fdfbf5;
+  --pv-raised: #ece5d4;
+  --pv-ink: #262218;
+  --pv-muted: #56503f;
+  --pv-faint: #6e6753;
+  --pv-line: #e0d8c4;
+  --pv-line-strong: #bfb49a;
+  --pv-accent: #7a4a1e;
+  --pv-accent-strong: #5f3812;
+  --pv-on-accent: #fbf6ec;
+  --pv-brass: #8a5b22;
+  --pv-danger: #a63b2a;
+  --pv-danger-solid: #a03828;
+  --pv-danger-hover: #8b2f20;
+  --pv-on-danger: #fff6f2;
+  --pv-danger-surface: #f5e4da;
+  --pv-danger-line: #ddb5a5;
+  --pv-success: #23684a;
+  --pv-success-surface: #e5eddc;
+  --pv-success-line: #bccfad;
+  --pv-warning: #7a5416;
+  --pv-warning-surface: #f2e7cb;
+  --pv-warning-line: #d9c08a;
+}
+
+.profile-theme-studio {
+  color-scheme: dark;
+
+  --pv-canvas: #171732;
+  --pv-surface: #1f1f42;
+  --pv-raised: #2a2a52;
+  --pv-ink: #e9e9f7;
+  --pv-muted: #ababd6;
+  --pv-faint: #8a8abf;
+  --pv-line: #2c2c55;
+  --pv-line-strong: #44447a;
+  --pv-accent: #a5a1f0;
+  --pv-accent-strong: #bdbaf5;
+  --pv-on-accent: #14142e;
+  --pv-brass: #c9a96a;
+  --pv-danger: #e28a77;
+  --pv-danger-solid: #b04b36;
+  --pv-danger-hover: #c25a43;
+  --pv-on-danger: #fff3ee;
+  --pv-danger-surface: #2e1b26;
+  --pv-danger-line: #55303c;
+  --pv-success: #85d3a9;
+  --pv-success-surface: #152a2a;
+  --pv-success-line: #2c4a48;
+  --pv-warning: #ddb56a;
+  --pv-warning-surface: #2b2420;
+  --pv-warning-line: #51422e;
+}
+
+/* Accessibility floor: one visible keyboard focus treatment everywhere. */
+:focus-visible {
+  outline: 2px solid var(--pv-accent);
+  outline-offset: 2px;
+}
+
+::selection {
+  background-color: var(--pv-accent);
+  color: var(--pv-on-accent);
+}
+
+body {
+  background-color: var(--pv-canvas);
+  color: var(--pv-ink);
+}
+
+/* Signature: the ledger double-rule used for major dividers. */
+.rule-double {
+  border-top: 3px double var(--pv-line-strong);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

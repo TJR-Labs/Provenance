@@ -76,56 +76,56 @@ export function ProfileForm({
   return (
     <form
       action={action}
-      className="mt-8 space-y-6 rounded-xl border border-slate-800 bg-slate-900 p-6 sm:p-8"
+      className="border-line bg-surface mt-8 space-y-6 rounded-lg border p-6 sm:p-8"
     >
       {error ? (
         <p
           role="alert"
-          className="rounded-md border border-red-900 bg-red-950/50 px-4 py-3 text-sm text-red-200"
+          className="border-danger-line bg-danger-surface text-danger rounded-md border px-4 py-3 text-sm break-words"
         >
           {error}
         </p>
       ) : null}
       {success ? (
-        <p className="rounded-md border border-emerald-900 bg-emerald-950/50 px-4 py-3 text-sm text-emerald-200">
+        <p className="border-success-line bg-success-surface text-success rounded-md border px-4 py-3 text-sm">
           Profile updated.
         </p>
       ) : null}
-      <label className="block text-sm font-medium text-slate-200">
+      <label className="text-ink block text-sm font-medium">
         Display name
         <input
           name="displayName"
           required
           defaultValue={initial.displayName}
-          className="mt-2 block w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+          className="border-line-strong bg-canvas text-ink focus:border-accent mt-2 block w-full rounded-md border px-3 py-2"
         />
       </label>
-      <label className="block text-sm font-medium text-slate-200">
+      <label className="text-ink block text-sm font-medium">
         Bio
         <textarea
           name="bio"
           rows={6}
           defaultValue={initial.bio}
-          className="mt-2 block w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+          className="border-line-strong bg-canvas text-ink focus:border-accent mt-2 block w-full rounded-md border px-3 py-2"
         />
       </label>
-      <label className="block text-sm font-medium text-slate-200">
+      <label className="text-ink block text-sm font-medium">
         School or affiliation
         <input
           name="school"
           defaultValue={initial.school}
-          className="mt-2 block w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+          className="border-line-strong bg-canvas text-ink focus:border-accent mt-2 block w-full rounded-md border px-3 py-2"
         />
       </label>
 
       <div>
-        <label className="block text-sm font-medium text-slate-200">
+        <label className="text-ink block text-sm font-medium">
           Profile picture
           <input
             type="file"
             accept="image/png,image/jpeg,image/webp,image/gif"
             disabled={uploading}
-            className="mt-2 block w-full"
+            className="text-muted file:bg-raised file:text-ink mt-2 block w-full text-sm file:mr-3 file:rounded-md file:border-0 file:px-3 file:py-1.5 file:text-sm file:font-medium"
             onChange={(event) => {
               const file = event.target.files?.[0];
               if (file) void upload(file);
@@ -134,34 +134,36 @@ export function ProfileForm({
           />
         </label>
         {avatarUrl ? (
-          <p className="mt-2 truncate text-sm text-slate-400">{avatarUrl}</p>
+          <p className="text-muted mt-2 truncate font-mono text-xs">
+            {avatarUrl}
+          </p>
         ) : null}
         {uploadError ? (
-          <p role="alert" className="mt-2 text-sm text-red-300">
+          <p role="alert" className="text-danger mt-2 text-sm break-words">
             {uploadError}
           </p>
         ) : null}
         <input type="hidden" name="avatarUrl" value={avatarUrl} />
       </div>
 
-      <label className="block text-sm font-medium text-slate-200">
+      <label className="text-ink block text-sm font-medium">
         External links{" "}
-        <span className="text-slate-500">
+        <span className="text-faint font-normal">
           (one per line: Label | https://url)
         </span>
         <textarea
           name="links"
           rows={5}
           defaultValue={initial.links}
-          className="mt-2 block w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+          className="border-line-strong bg-canvas text-ink focus:border-accent mt-2 block w-full rounded-md border px-3 py-2"
         />
       </label>
-      <label className="block text-sm font-medium text-slate-200">
+      <label className="text-ink block text-sm font-medium">
         Theme
         <select
           name="theme"
           defaultValue={initial.theme}
-          className="mt-2 block w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-white"
+          className="border-line-strong bg-canvas text-ink mt-2 block w-full rounded-md border px-3 py-2"
         >
           <option value="default">Default dark</option>
           <option value="paper">Paper light</option>
@@ -170,24 +172,24 @@ export function ProfileForm({
       </label>
 
       <fieldset>
-        <legend className="text-sm font-medium text-slate-200">
+        <legend className="text-ink text-sm font-medium">
           Profile sections
         </legend>
-        <p className="mt-1 text-sm text-slate-500">
+        <p className="text-muted mt-1 text-sm">
           Choose which sections appear and reorder them.
         </p>
         <ol className="mt-3 space-y-2">
           {sections.map((section, index) => (
             <li
               key={section}
-              className="flex items-center gap-3 rounded-md bg-slate-950 px-3 py-2"
+              className="border-line bg-canvas flex items-center gap-3 rounded-md border px-3 py-2"
             >
-              <span className="flex-1 text-slate-200">{labels[section]}</span>
+              <span className="text-ink flex-1">{labels[section]}</span>
               <button
                 type="button"
                 onClick={() => move(index, -1)}
                 disabled={index === 0}
-                className="text-sm text-sky-300 disabled:text-slate-700"
+                className="text-accent hover:text-accent-strong disabled:text-faint text-sm font-medium transition-colors"
               >
                 Up
               </button>
@@ -195,7 +197,7 @@ export function ProfileForm({
                 type="button"
                 onClick={() => move(index, 1)}
                 disabled={index === sections.length - 1}
-                className="text-sm text-sky-300 disabled:text-slate-700"
+                className="text-accent hover:text-accent-strong disabled:text-faint text-sm font-medium transition-colors"
               >
                 Down
               </button>
@@ -206,7 +208,7 @@ export function ProfileForm({
                     items.filter((item) => item !== section),
                   )
                 }
-                className="text-sm text-red-300"
+                className="text-danger text-sm font-medium underline-offset-4 hover:underline"
               >
                 Hide
               </button>
@@ -221,7 +223,7 @@ export function ProfileForm({
                 key={section}
                 type="button"
                 onClick={() => setSections((items) => [...items, section])}
-                className="rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-300"
+                className="border-line-strong text-muted hover:bg-raised hover:text-ink rounded-md border px-3 py-1.5 text-sm font-medium transition-colors"
               >
                 Show {labels[section]}
               </button>
@@ -230,23 +232,23 @@ export function ProfileForm({
         <input type="hidden" name="sections" value={sections.join(",")} />
       </fieldset>
 
-      <label className="block text-sm font-medium text-slate-200">
+      <label className="text-ink block text-sm font-medium">
         Custom CSS
         <textarea
           name="customCss"
           rows={10}
           defaultValue={initial.customCss}
           spellCheck={false}
-          className="mt-2 block w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 font-mono text-sm text-white"
+          className="border-line-strong bg-canvas text-ink focus:border-accent mt-2 block w-full rounded-md border px-3 py-2 font-mono text-sm"
         />
-        <span className="mt-2 block text-xs text-slate-500">
+        <span className="text-faint mt-2 block text-xs font-normal">
           CSS is automatically scoped to your profile. Imports and external
           resources are removed.
         </span>
       </label>
       <button
         disabled={uploading}
-        className="rounded-md bg-sky-400 px-5 py-2.5 font-semibold text-slate-950 hover:bg-sky-300 disabled:opacity-50"
+        className="bg-accent text-on-accent hover:bg-accent-strong rounded-md px-5 py-2.5 font-semibold transition-colors disabled:opacity-50"
       >
         Save profile
       </button>

@@ -38,10 +38,12 @@ function readSections(value: unknown) {
   );
 }
 
+// Profile skins override the design tokens for this subtree (see globals.css),
+// so nested components follow the visitor-facing theme the owner picked.
 const themeClasses = {
-  default: "bg-slate-950 text-slate-100",
-  paper: "bg-stone-100 text-stone-900 [&_.profile-muted]:text-stone-600",
-  studio: "bg-indigo-950 text-indigo-50 [&_.profile-muted]:text-indigo-200",
+  default: "",
+  paper: "profile-theme-paper",
+  studio: "profile-theme-studio",
 };
 
 export default async function ProfilePage({
@@ -69,13 +71,13 @@ export default async function ProfilePage({
 
   return (
     <div
-      className={`${scope} ${theme} min-h-full flex-1`}
+      className={`${scope} ${theme} bg-canvas text-ink min-h-full flex-1`}
       style={{ contain: "layout" }}
     >
       {css ? <style dangerouslySetInnerHTML={{ __html: css }} /> : null}
       <section className="mx-auto w-full max-w-6xl px-6 py-14">
         {query.reported ? (
-          <p className="mb-8 rounded-md border border-emerald-700 bg-emerald-950/60 px-4 py-3 text-sm text-emerald-100">
+          <p className="border-success-line bg-success-surface text-success mb-8 rounded-md border px-4 py-3 text-sm">
             Thank you. Your report was submitted for review.
           </p>
         ) : null}
@@ -85,25 +87,25 @@ export default async function ProfilePage({
             <img
               src={profile.avatarUrl}
               alt=""
-              className="h-28 w-28 rounded-full border-4 border-white/10 object-cover"
+              className="border-line-strong bg-raised h-28 w-28 rounded-full border object-cover"
             />
           ) : (
-            <div className="flex h-28 w-28 items-center justify-center rounded-full bg-sky-400 text-4xl font-bold text-slate-950">
+            <div className="border-line-strong bg-raised font-display text-ink flex h-28 w-28 items-center justify-center rounded-full border text-4xl font-semibold">
               {profile.displayName.slice(0, 1).toUpperCase()}
             </div>
           )}
-          <div>
-            <h1 className="text-4xl font-bold tracking-tight">
+          <div className="min-w-0">
+            <h1 className="font-display text-4xl font-semibold tracking-tight break-words">
               {profile.displayName}
             </h1>
-            <p className="profile-muted mt-1 text-slate-400">
+            <p className="profile-muted text-muted mt-1 font-mono text-sm break-words">
               @{profile.username}
               {profile.school ? ` · ${profile.school}` : ""}
             </p>
             {session?.user.id === profile.id ? (
               <Link
                 href="/profile/edit"
-                className="mt-3 inline-block text-sm font-semibold text-sky-300 hover:text-sky-200"
+                className="text-accent hover:text-accent-strong mt-3 inline-block text-sm font-semibold transition-colors"
               >
                 Edit profile
               </Link>
@@ -117,7 +119,7 @@ export default async function ProfilePage({
               <Link
                 key={category}
                 href={`/?category=${category}`}
-                className="rounded-full bg-white/10 px-3 py-1 text-sm"
+                className="bg-raised text-muted hover:text-accent rounded-full px-3 py-1 text-sm transition-colors"
               >
                 {categoryLabels[category]}
               </Link>
@@ -129,8 +131,8 @@ export default async function ProfilePage({
           if (section === "about") {
             return (
               <div key={section} className="mt-12 max-w-3xl">
-                <h2 className="text-2xl font-semibold">About</h2>
-                <p className="profile-muted mt-4 leading-7 whitespace-pre-wrap text-slate-300">
+                <h2 className="font-display text-2xl font-semibold">About</h2>
+                <p className="profile-muted text-muted mt-4 leading-7 break-words whitespace-pre-wrap">
                   {profile.bio ?? "This person has not added a bio yet."}
                 </p>
               </div>
@@ -139,7 +141,7 @@ export default async function ProfilePage({
           if (section === "links") {
             return (
               <div key={section} className="mt-12">
-                <h2 className="text-2xl font-semibold">Links</h2>
+                <h2 className="font-display text-2xl font-semibold">Links</h2>
                 {links.length ? (
                   <div className="mt-4 flex flex-wrap gap-3">
                     {links.map((link) => {
@@ -150,14 +152,14 @@ export default async function ProfilePage({
                           href={href}
                           target="_blank"
                           rel="noreferrer"
-                          className="rounded-md border border-white/20 px-4 py-2 hover:bg-white/10"
+                          className="border-line-strong hover:border-accent hover:text-accent max-w-full truncate rounded-md border px-4 py-2 font-medium transition-colors"
                         >
                           {link.label}
                         </a>
                       ) : (
                         <span
                           key={`${link.label}-${link.url}`}
-                          className="rounded-md border border-white/20 px-4 py-2 text-slate-400"
+                          className="border-line text-faint max-w-full truncate rounded-md border px-4 py-2"
                         >
                           {link.label}
                         </span>
@@ -165,7 +167,7 @@ export default async function ProfilePage({
                     })}
                   </div>
                 ) : (
-                  <p className="profile-muted mt-4 text-slate-400">
+                  <p className="profile-muted text-muted mt-4">
                     No links added.
                   </p>
                 )}
@@ -175,11 +177,13 @@ export default async function ProfilePage({
           return (
             <div key={section} className="mt-12">
               <div className="flex items-center justify-between gap-4">
-                <h2 className="text-2xl font-semibold">Projects</h2>
+                <h2 className="font-display text-2xl font-semibold">
+                  Projects
+                </h2>
                 {session?.user.id === profile.id ? (
                   <Link
                     href="/projects/new"
-                    className="text-sm font-semibold text-sky-300"
+                    className="text-accent hover:text-accent-strong text-sm font-semibold transition-colors"
                   >
                     Add project
                   </Link>
@@ -192,30 +196,35 @@ export default async function ProfilePage({
                   ))}
                 </div>
               ) : (
-                <p className="profile-muted mt-6 rounded-xl border border-dashed border-white/20 px-6 py-12 text-center text-slate-400">
-                  No projects yet.
-                </p>
+                <div className="border-line-strong mt-6 rounded-lg border border-dashed px-6 py-14 text-center">
+                  <p className="text-faint font-mono text-xs tracking-[0.14em] uppercase">
+                    No records yet
+                  </p>
+                  <p className="profile-muted text-muted mt-3">
+                    No projects yet.
+                  </p>
+                </div>
               )}
             </div>
           );
         })}
 
-        <div className="mt-16 border-t border-white/10 pt-8">
+        <div className="rule-double mt-16 pt-8">
           {session ? (
             <form action={reportAction} className="flex max-w-xl gap-3">
               <input
                 name="reason"
                 placeholder="Why are you reporting this profile? (optional)"
-                className="min-w-0 flex-1 rounded-md border border-white/20 bg-black/20 px-3 py-2"
+                className="border-line-strong bg-surface text-ink placeholder:text-faint focus:border-accent min-w-0 flex-1 rounded-md border px-3 py-2"
               />
-              <button className="text-sm text-red-300 hover:text-red-200">
+              <button className="text-danger text-sm font-medium underline-offset-4 hover:underline">
                 Report
               </button>
             </form>
           ) : (
             <Link
               href="/login"
-              className="text-sm text-red-300 hover:text-red-200"
+              className="text-danger text-sm font-medium underline-offset-4 hover:underline"
             >
               Log in to report this profile
             </Link>

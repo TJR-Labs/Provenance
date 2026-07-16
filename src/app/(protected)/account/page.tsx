@@ -27,26 +27,30 @@ export default async function AccountPage({ searchParams }: AccountPageProps) {
 
   return (
     <section className="mx-auto w-full max-w-2xl px-6 py-16">
-      <h1 className="text-3xl font-bold tracking-tight text-white">Account</h1>
-      <p className="mt-2 text-slate-400">Manage your sign-in methods.</p>
+      <h1 className="font-display text-ink text-3xl font-semibold tracking-tight">
+        Account
+      </h1>
+      <p className="text-muted mt-2">Manage your sign-in methods.</p>
 
       {params.error ? (
         <p
           role="alert"
-          className="mt-6 rounded-md border border-red-900 bg-red-950/50 px-4 py-3 text-sm text-red-200"
+          className="border-danger-line bg-danger-surface text-danger mt-6 rounded-md border px-4 py-3 text-sm break-words"
         >
           {params.error}
         </p>
       ) : null}
       {successMessage ? (
-        <p className="mt-6 rounded-md border border-emerald-900 bg-emerald-950/50 px-4 py-3 text-sm text-emerald-200">
+        <p className="border-success-line bg-success-surface text-success mt-6 rounded-md border px-4 py-3 text-sm">
           {successMessage}
         </p>
       ) : null}
 
-      <section className="mt-8 rounded-xl border border-slate-800 bg-slate-900 p-8">
-        <h2 className="text-xl font-semibold text-white">Connected accounts</h2>
-        <div className="mt-5 divide-y divide-slate-800">
+      <section className="border-line bg-surface mt-8 rounded-lg border p-8">
+        <h2 className="font-display text-ink text-xl font-semibold">
+          Connected accounts
+        </h2>
+        <div className="divide-line mt-5 divide-y">
           {(["google", "github"] as const).map((provider) => {
             const linked = security.linkedProviders.includes(provider);
             const label = provider === "google" ? "Google" : "GitHub";
@@ -56,8 +60,8 @@ export default async function AccountPage({ searchParams }: AccountPageProps) {
                 className="flex items-center justify-between gap-4 py-4"
               >
                 <div>
-                  <p className="font-medium text-slate-100">{label}</p>
-                  <p className="text-sm text-slate-400">
+                  <p className="text-ink font-medium">{label}</p>
+                  <p className="text-muted mt-0.5 font-mono text-xs tracking-[0.14em] uppercase">
                     {linked ? "Connected" : "Not connected"}
                   </p>
                 </div>
@@ -67,7 +71,7 @@ export default async function AccountPage({ searchParams }: AccountPageProps) {
                   }
                 >
                   <input type="hidden" name="provider" value={provider} />
-                  <button className="rounded-md border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-100 hover:border-slate-500 hover:bg-slate-800">
+                  <button className="border-line-strong text-ink hover:bg-raised rounded-md border px-4 py-2 text-sm font-semibold transition-colors">
                     {linked ? "Unlink" : "Link"}
                   </button>
                 </form>
@@ -80,20 +84,22 @@ export default async function AccountPage({ searchParams }: AccountPageProps) {
       {security.hasPassword ? (
         <form
           action={changePasswordAction}
-          className="mt-8 space-y-5 rounded-xl border border-slate-800 bg-slate-900 p-8"
+          className="border-line bg-surface mt-8 space-y-5 rounded-lg border p-8"
         >
-          <h2 className="text-xl font-semibold text-white">Change password</h2>
-          <label className="block text-sm font-medium text-slate-200">
+          <h2 className="font-display text-ink text-xl font-semibold">
+            Change password
+          </h2>
+          <label className="text-ink block text-sm font-medium">
             Current password
             <input
               name="currentPassword"
               type="password"
               required
               autoComplete="current-password"
-              className="mt-2 block w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-white outline-none focus:border-sky-400"
+              className="border-line-strong bg-canvas text-ink focus:border-accent mt-2 block w-full rounded-md border px-3 py-2"
             />
           </label>
-          <label className="block text-sm font-medium text-slate-200">
+          <label className="text-ink block text-sm font-medium">
             New password
             <input
               name="newPassword"
@@ -101,12 +107,12 @@ export default async function AccountPage({ searchParams }: AccountPageProps) {
               required
               minLength={8}
               autoComplete="new-password"
-              className="mt-2 block w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-white outline-none focus:border-sky-400"
+              className="border-line-strong bg-canvas text-ink focus:border-accent mt-2 block w-full rounded-md border px-3 py-2"
             />
           </label>
           <button
             type="submit"
-            className="rounded-md bg-sky-400 px-4 py-2 font-semibold text-slate-950 transition hover:bg-sky-300"
+            className="bg-accent text-on-accent hover:bg-accent-strong rounded-md px-4 py-2 font-semibold transition-colors"
           >
             Change password
           </button>
@@ -114,15 +120,17 @@ export default async function AccountPage({ searchParams }: AccountPageProps) {
       ) : (
         <form
           action={setPasswordAction}
-          className="mt-8 space-y-5 rounded-xl border border-slate-800 bg-slate-900 p-8"
+          className="border-line bg-surface mt-8 space-y-5 rounded-lg border p-8"
         >
           <div>
-            <h2 className="text-xl font-semibold text-white">Set password</h2>
-            <p className="mt-1 text-sm text-slate-400">
+            <h2 className="font-display text-ink text-xl font-semibold">
+              Set password
+            </h2>
+            <p className="text-muted mt-1 text-sm">
               Add a password before disconnecting your last provider.
             </p>
           </div>
-          <label className="block text-sm font-medium text-slate-200">
+          <label className="text-ink block text-sm font-medium">
             New password
             <input
               name="newPassword"
@@ -130,10 +138,10 @@ export default async function AccountPage({ searchParams }: AccountPageProps) {
               required
               minLength={8}
               autoComplete="new-password"
-              className="mt-2 block w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-white outline-none focus:border-sky-400"
+              className="border-line-strong bg-canvas text-ink focus:border-accent mt-2 block w-full rounded-md border px-3 py-2"
             />
           </label>
-          <button className="rounded-md bg-sky-400 px-4 py-2 font-semibold text-slate-950 transition hover:bg-sky-300">
+          <button className="bg-accent text-on-accent hover:bg-accent-strong rounded-md px-4 py-2 font-semibold transition-colors">
             Set password
           </button>
         </form>

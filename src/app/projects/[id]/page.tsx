@@ -37,21 +37,21 @@ export default async function ProjectPage({
   return (
     <article className="mx-auto w-full max-w-5xl px-6 py-14">
       {query.reported ? (
-        <p className="mb-8 rounded-md border border-emerald-800 bg-emerald-950/50 px-4 py-3 text-sm text-emerald-100">
+        <p className="border-success-line bg-success-surface text-success mb-8 rounded-md border px-4 py-3 text-sm">
           Thank you. Your report was submitted for review.
         </p>
       ) : null}
-      <p className="text-sm font-semibold tracking-wide text-sky-300 uppercase">
+      <p className="text-brass font-mono text-xs tracking-[0.14em] uppercase">
         {categoryLabels[project.category]}
       </p>
-      <h1 className="mt-3 text-4xl font-bold tracking-tight text-white sm:text-5xl">
+      <h1 className="font-display text-ink mt-3 text-4xl font-semibold tracking-tight break-words sm:text-5xl">
         {project.title}
       </h1>
-      <p className="mt-3 text-slate-400">
+      <p className="text-muted mt-3 truncate">
         by{" "}
         <Link
           href={`/${project.user.username}`}
-          className="text-slate-200 hover:text-white"
+          className="text-ink hover:text-accent font-medium transition-colors"
         >
           {project.user.displayName}
         </Link>
@@ -59,13 +59,13 @@ export default async function ProjectPage({
       {session?.user.id === project.user.id ? (
         <Link
           href={`/projects/${project.id}/edit`}
-          className="mt-5 inline-block rounded-md border border-slate-700 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+          className="border-line-strong text-ink hover:bg-raised mt-5 inline-block rounded-md border px-4 py-2 text-sm font-semibold transition-colors"
         >
           Edit project
         </Link>
       ) : null}
 
-      <p className="mt-10 text-lg leading-8 whitespace-pre-wrap text-slate-300">
+      <p className="text-ink mt-10 text-lg leading-8 break-words whitespace-pre-wrap">
         {project.description}
       </p>
 
@@ -74,16 +74,21 @@ export default async function ProjectPage({
           {project.media.map((media) => (
             <div
               key={media.id}
-              className="min-h-56 overflow-hidden rounded-xl border border-slate-800 bg-slate-900"
+              className="border-line bg-surface min-h-56 overflow-hidden rounded-lg border"
             >
               <ProjectMedia media={media} title={project.title} />
             </div>
           ))}
         </div>
       ) : (
-        <p className="mt-10 rounded-xl border border-dashed border-slate-700 px-6 py-12 text-center text-slate-400">
-          This project tells its story without media.
-        </p>
+        <div className="border-line-strong mt-10 rounded-lg border border-dashed px-6 py-12 text-center">
+          <p className="text-faint font-mono text-xs tracking-[0.14em] uppercase">
+            No media on record
+          </p>
+          <p className="text-muted mt-3">
+            This project tells its story without media.
+          </p>
+        </div>
       )}
 
       {project.links.length ? (
@@ -96,12 +101,12 @@ export default async function ProjectPage({
                 href={href}
                 target="_blank"
                 rel="noreferrer"
-                className="rounded-md bg-sky-400 px-4 py-2 font-semibold text-slate-950 hover:bg-sky-300"
+                className="bg-accent text-on-accent hover:bg-accent-strong rounded-md px-4 py-2 font-semibold transition-colors"
               >
                 Open project link
               </a>
             ) : (
-              <span key={link} className="break-all text-slate-400">
+              <span key={link} className="text-faint break-all">
                 {link}
               </span>
             );
@@ -109,34 +114,34 @@ export default async function ProjectPage({
         </div>
       ) : null}
 
-      <div className="mt-8 flex flex-wrap gap-2">
+      <div className="mt-8 flex flex-wrap gap-x-4 gap-y-2">
         {project.hashtags.map((tag) => (
           <Link
             key={tag}
             href={`/?hashtag=${encodeURIComponent(tag)}`}
-            className="text-sky-300"
+            className="text-accent hover:text-accent-strong font-mono text-sm break-all transition-colors"
           >
             #{tag}
           </Link>
         ))}
       </div>
 
-      <div className="mt-16 border-t border-slate-800 pt-8">
+      <div className="rule-double mt-16 pt-8">
         {session ? (
           <form action={reportAction} className="flex max-w-xl gap-3">
             <input
               name="reason"
               placeholder="Why are you reporting this project? (optional)"
-              className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-white"
+              className="border-line-strong bg-surface text-ink placeholder:text-faint focus:border-accent min-w-0 flex-1 rounded-md border px-3 py-2"
             />
-            <button className="text-sm text-red-300 hover:text-red-200">
+            <button className="text-danger text-sm font-medium underline-offset-4 hover:underline">
               Report
             </button>
           </form>
         ) : (
           <Link
             href="/login"
-            className="text-sm text-red-300 hover:text-red-200"
+            className="text-danger text-sm font-medium underline-offset-4 hover:underline"
           >
             Log in to report this project
           </Link>

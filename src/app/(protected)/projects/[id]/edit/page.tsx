@@ -25,7 +25,7 @@ export default async function EditProjectPage({
 
   return (
     <section className="mx-auto w-full max-w-3xl px-6 py-14">
-      <h1 className="text-3xl font-bold tracking-tight text-white">
+      <h1 className="font-display text-ink text-3xl font-semibold tracking-tight">
         Edit project
       </h1>
       <ProjectForm
@@ -51,14 +51,16 @@ export default async function EditProjectPage({
       />
       <form
         action={deleteProjectAction.bind(null, project.id)}
-        className="mt-8 rounded-xl border border-red-950 bg-red-950/20 p-6"
+        className="border-danger-line bg-danger-surface mt-8 rounded-lg border p-6"
       >
-        <h2 className="font-semibold text-white">Delete project</h2>
-        <p className="mt-2 text-sm text-slate-400">
+        <h2 className="font-display text-danger font-semibold">
+          Delete project
+        </h2>
+        <p className="text-muted mt-2 text-sm">
           This permanently removes the project, its media records, and its
           reports.
         </p>
-        <button className="mt-4 rounded-md bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600">
+        <button className="bg-danger-solid text-on-danger hover:bg-danger-hover mt-4 rounded-md px-4 py-2 text-sm font-semibold transition-colors">
           Delete project
         </button>
       </form>

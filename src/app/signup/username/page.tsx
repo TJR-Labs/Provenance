@@ -55,11 +55,11 @@ export default async function UsernamePage({
 
   return (
     <section className="flex flex-1 items-center justify-center px-6 py-20">
-      <div className="w-full max-w-md rounded-xl border border-slate-800 bg-slate-900 p-8 shadow-xl">
-        <h1 className="text-3xl font-bold tracking-tight text-white">
+      <div className="border-line bg-surface w-full max-w-md rounded-lg border p-8 shadow-sm">
+        <h1 className="font-display text-ink text-3xl font-semibold tracking-tight">
           Choose your username
         </h1>
-        <p className="mt-2 text-sm text-slate-400">
+        <p className="text-muted mt-2 text-sm">
           Finish signing up with{" "}
           {pending.provider === "google" ? "Google" : "GitHub"}
           {pending.name ? ` as ${pending.name}` : ""}.
@@ -67,13 +67,13 @@ export default async function UsernamePage({
         {params.error ? (
           <p
             role="alert"
-            className="mt-6 rounded-md border border-red-900 bg-red-950/50 px-4 py-3 text-sm text-red-200"
+            className="border-danger-line bg-danger-surface text-danger mt-6 rounded-md border px-4 py-3 text-sm break-words"
           >
             {params.error}
           </p>
         ) : null}
         <form action={chooseUsername} className="mt-6 space-y-5">
-          <label className="block text-sm font-medium text-slate-200">
+          <label className="text-ink block text-sm font-medium">
             Username
             <input
               name="username"
@@ -82,10 +82,10 @@ export default async function UsernamePage({
               maxLength={30}
               autoComplete="username"
               autoFocus
-              className="mt-2 block w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-white outline-none focus:border-sky-400"
+              className="border-line-strong bg-canvas text-ink focus:border-accent mt-2 block w-full rounded-md border px-3 py-2"
             />
           </label>
-          <button className="w-full rounded-md bg-sky-400 px-4 py-2 font-semibold text-slate-950 hover:bg-sky-300">
+          <button className="bg-accent text-on-accent hover:bg-accent-strong w-full rounded-md px-4 py-2 font-semibold transition-colors">
             Create account
           </button>
         </form>

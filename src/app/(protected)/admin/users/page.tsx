@@ -14,30 +14,36 @@ export default async function UsersPage() {
 
   return (
     <section className="mx-auto w-full max-w-6xl px-6 py-14">
-      <h1 className="text-3xl font-bold tracking-tight text-white">Users</h1>
-      <p className="mt-2 text-slate-400">
+      <h1 className="font-display text-ink text-3xl font-semibold tracking-tight">
+        Users
+      </h1>
+      <p className="text-muted mt-2">
         Review accounts and deactivate abusive users.
       </p>
-      <div className="mt-8 overflow-x-auto rounded-xl border border-slate-800">
+      <div className="border-line bg-surface mt-8 overflow-x-auto rounded-lg border">
         <table className="w-full text-left text-sm">
-          <thead className="bg-slate-900 text-slate-300">
+          <thead className="bg-raised text-muted font-mono text-xs tracking-[0.14em] uppercase">
             <tr>
-              <th className="px-4 py-3">Username</th>
-              <th className="px-4 py-3">Role</th>
-              <th className="px-4 py-3">Created</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Action</th>
+              <th className="px-4 py-3 font-medium">Username</th>
+              <th className="px-4 py-3 font-medium">Role</th>
+              <th className="px-4 py-3 font-medium">Created</th>
+              <th className="px-4 py-3 font-medium">Status</th>
+              <th className="px-4 py-3 font-medium">Action</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-800">
+          <tbody className="divide-line divide-y">
             {users.map((user) => (
               <tr key={user.id}>
-                <td className="px-4 py-3 text-white">{user.username}</td>
-                <td className="px-4 py-3 text-slate-300">{user.role}</td>
-                <td className="px-4 py-3 text-slate-400">
+                <td className="text-ink max-w-56 truncate px-4 py-3 font-medium">
+                  {user.username}
+                </td>
+                <td className="text-muted px-4 py-3 font-mono text-xs uppercase">
+                  {user.role}
+                </td>
+                <td className="text-faint px-4 py-3 font-mono text-xs">
                   {dateFormatter.format(user.createdAt)}
                 </td>
-                <td className="px-4 py-3 text-slate-300">
+                <td className="text-muted px-4 py-3">
                   {user.banned ? "Banned" : "Active"}
                 </td>
                 <td className="px-4 py-3">
@@ -45,7 +51,7 @@ export default async function UsersPage() {
                     <form
                       action={banUserAction.bind(null, user.id, "/admin/users")}
                     >
-                      <button className="text-red-300 hover:text-red-200">
+                      <button className="text-danger font-medium underline-offset-4 hover:underline">
                         Ban user
                       </button>
                     </form>
