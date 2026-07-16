@@ -1,138 +1,116 @@
 import "~/styles/globals.css";
 
-import { type Metadata } from "next";
+import type { Metadata } from "next";
 import Link from "next/link";
 
 import { Role } from "../../generated/prisma";
-import { getServerCaller } from "~/server/api/caller";
-import { auth, signOut } from "~/server/auth";
 import { TRPCReactProvider } from "~/trpc/react";
-import { UnreadMessageBadge } from "./unread-message-badge";
+import { auth, signOut } from "~/server/auth";
 
 export const metadata: Metadata = {
   title: "Provenance",
-  description: "Engineers discovered through real work — not resumes.",
-  icons: [{ rel: "icon", url: "/favicon.ico" }],
+  description:
+    "Build a public portfolio and discover what other people create.",
 };
 
 export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   const session = await auth();
-  const unreadCount =
-    session?.user.role === Role.ENGINEER
-      ? await (await getServerCaller()).message.unreadCount()
-      : 0;
 
   return (
-    <html lang="en">
-      <body className="min-h-screen bg-slate-950 text-slate-100 antialiased">
+    <html lang="en" className="h-full bg-slate-950">
+      <body className="min-h-full bg-slate-950 text-slate-100 antialiased">
         <TRPCReactProvider>
           <div className="flex min-h-screen flex-col">
-            <header className="border-b border-slate-800">
+            <header className="border-b border-slate-800 bg-slate-950/95 px-6 py-4">
               <nav
-                aria-label="Primary navigation"
-                className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4"
+                className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-4"
+                aria-label="Main navigation"
               >
-                <Link
-                  href="/"
-                  className="text-lg font-semibold tracking-tight text-white"
-                >
-                  Provenance
-                </Link>
-                <div className="flex items-center gap-5 text-sm">
+                <div className="flex items-center gap-6">
+                  <Link
+                    href="/"
+                    className="text-lg font-bold tracking-tight text-white"
+                  >
+                    Provenance
+                  </Link>
+                  <Link
+                    href="/"
+                    className="text-sm text-slate-300 hover:text-white"
+                  >
+                    Discover
+                  </Link>
+                </div>
+                <div className="flex flex-wrap items-center justify-end gap-4 text-sm">
                   {session ? (
                     <>
                       <Link
-                        href="/briefs"
+                        href={`/${session.user.username}`}
                         className="text-slate-300 hover:text-white"
                       >
-                        Briefs
+                        My profile
                       </Link>
-                      {session.user.role === Role.COMPANY ? (
-                        <>
-                          <Link
-                            href="/company"
-                            className="text-slate-300 hover:text-white"
-                          >
-                            Company
-                          </Link>
-                          <Link
-                            href="/scout"
-                            className="text-slate-300 hover:text-white"
-                          >
-                            Scout
-                          </Link>
-                        </>
-                      ) : null}
-                      {session.user.role === Role.ENGINEER ? (
-                        <Link
-                          href="/inbox"
-                          className="inline-flex items-center gap-2 text-slate-300 hover:text-white"
-                        >
-                          Inbox
-                          <UnreadMessageBadge initialCount={unreadCount} />
-                        </Link>
-                      ) : null}
-                      {session.user.role === Role.ADMIN ? (
-                        <Link
-                          href="/admin/users"
-                          className="text-slate-300 hover:text-white"
-                        >
-                          Users
-                        </Link>
-                      ) : null}
+                      <Link
+                        href="/projects/new"
+                        className="text-slate-300 hover:text-white"
+                      >
+                        New project
+                      </Link>
                       <Link
                         href="/account"
                         className="text-slate-300 hover:text-white"
                       >
                         Account
                       </Link>
-                      <span className="hidden text-right sm:block">
-                        <span className="block text-slate-100">
-                          {session.user.displayName}
-                        </span>
-                        <span className="block text-xs text-slate-400">
-                          {session.user.role}
-                        </span>
-                      </span>
+                      {session.user.role === Role.ADMIN ? (
+                        <Link
+                          href="/admin/reports"
+                          className="text-slate-300 hover:text-white"
+                        >
+                          Admin reports
+                        </Link>
+                      ) : null}
                       <form
                         action={async () => {
                           "use server";
                           await signOut({ redirectTo: "/" });
                         }}
                       >
-                        <button
-                          type="submit"
-                          className="text-slate-300 hover:text-white"
-                        >
+                        <button className="text-slate-300 hover:text-white">
                           Log out
                         </button>
                       </form>
                     </>
                   ) : (
-                    <Link
-                      href="/login"
-                      className="text-slate-300 hover:text-white"
-                    >
-                      Log in
-                    </Link>
+                    <>
+                      <Link
+                        href="/login"
+                        className="text-slate-300 hover:text-white"
+                      >
+                        Log in
+                      </Link>
+                      <Link
+                        href="/signup"
+                        className="rounded-md bg-sky-400 px-3 py-2 font-semibold text-slate-950 hover:bg-sky-300"
+                      >
+                        Sign up
+                      </Link>
+                    </>
                   )}
                 </div>
               </nav>
             </header>
             <main className="flex flex-1 flex-col">{children}</main>
             <footer className="border-t border-slate-800 px-6 py-6 text-sm text-slate-400">
-              <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-center gap-3 sm:flex-row sm:gap-5">
+              <div className="mx-auto flex w-full max-w-6xl items-center justify-center gap-5">
                 <span>Provenance</span>
-                <nav aria-label="Legal navigation" className="flex gap-5">
-                  <Link href="/terms" className="transition hover:text-white">
-                    Terms
-                  </Link>
-                  <Link href="/privacy" className="transition hover:text-white">
-                    Privacy
-                  </Link>
-                </nav>
+                <Link href="/terms" className="hover:text-white">
+                  Terms
+                </Link>
+                <Link href="/privacy" className="hover:text-white">
+                  Privacy
+                </Link>
               </div>
             </footer>
           </div>

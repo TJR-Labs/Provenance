@@ -24,7 +24,6 @@ describe("admin seed", () => {
       username: "admin",
       role: Role.ADMIN,
       displayName: "Admin",
-      companyName: null,
     });
     await expect(
       verifyPassword("generated-password", createArgs!.data.passwordHash),

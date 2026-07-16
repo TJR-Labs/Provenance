@@ -1,8 +1,8 @@
-import { briefRouter } from "~/server/api/routers/brief";
-import { evaluationRouter } from "~/server/api/routers/evaluation";
+import { discoveryRouter } from "~/server/api/routers/discovery";
 import { healthRouter } from "~/server/api/routers/health";
-import { messageRouter } from "~/server/api/routers/message";
-import { submissionRouter } from "~/server/api/routers/submission";
+import { moderationRouter } from "~/server/api/routers/moderation";
+import { profileRouter } from "~/server/api/routers/profile";
+import { projectRouter } from "~/server/api/routers/project";
 import { usersRouter } from "~/server/api/routers/users";
 import { createCallerFactory, createTRPCRouter } from "~/server/api/trpc";
 
@@ -12,11 +12,11 @@ import { createCallerFactory, createTRPCRouter } from "~/server/api/trpc";
  * All routers added in /api/routers should be manually added here.
  */
 export const appRouter = createTRPCRouter({
-  brief: briefRouter,
-  evaluation: evaluationRouter,
+  discovery: discoveryRouter,
   health: healthRouter,
-  message: messageRouter,
-  submission: submissionRouter,
+  moderation: moderationRouter,
+  profile: profileRouter,
+  project: projectRouter,
   users: usersRouter,
 });
 

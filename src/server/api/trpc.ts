@@ -151,9 +151,3 @@ const requireRole = (role: Role) =>
   });
 
 export const adminProcedure = protectedProcedure.use(requireRole(Role.ADMIN));
-export const companyProcedure = protectedProcedure.use(
-  requireRole(Role.COMPANY),
-);
-export const engineerProcedure = protectedProcedure.use(
-  requireRole(Role.ENGINEER),
-);

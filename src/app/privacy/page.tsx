@@ -9,15 +9,15 @@ export const metadata: Metadata = {
 const sections = [
   {
     heading: "What We Collect",
-    body: "[Placeholder — describe account data, stored work submissions, and private messages collected by Provenance here]",
+    body: "[Placeholder — describe account data, public portfolio projects, uploaded media, and reports collected by Provenance here]",
   },
   {
     heading: "How We Use It",
-    body: "[Placeholder — describe how account data, submissions, and messages support the controlled-distribution talent marketplace here]",
+    body: "[Placeholder — describe how account and project data support the public portfolio and discovery platform here]",
   },
   {
     heading: "Where Data Is Stored",
-    body: "[Placeholder — describe storage of Provenance data in Supabase-hosted Postgres here]",
+    body: "[Placeholder — describe storage of Provenance data in Supabase-hosted Postgres and Storage here]",
   },
   {
     heading: "Your Rights",

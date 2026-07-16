@@ -1,0 +1,16 @@
+import { Category } from "../../../../generated/prisma";
+import { z } from "zod";
+
+import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
+import { discoverProjects } from "~/server/projects";
+
+export const discoveryRouter = createTRPCRouter({
+  list: publicProcedure
+    .input(
+      z.object({
+        category: z.nativeEnum(Category).optional(),
+        hashtag: z.string().trim().max(60).optional(),
+      }),
+    )
+    .query(({ ctx, input }) => discoverProjects(input, ctx.db.project)),
+});

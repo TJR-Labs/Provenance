@@ -44,8 +44,9 @@ const user = {
   id: "user-1",
   username: "alice",
   passwordHash: "stored-hash",
-  role: Role.ENGINEER,
+  role: Role.USER,
   displayName: "Alice",
+  banned: false,
 };
 
 async function authorize(username: string, password: string) {
@@ -111,6 +112,12 @@ afterEach(() => {
 });
 
 describe("credentials login rate limiting", () => {
+  it("rejects a banned user even with the correct password", async () => {
+    mocks.findUser.mockResolvedValueOnce({ ...user, banned: true });
+    await expect(authorize("alice", "correct-password")).resolves.toBeNull();
+    expect(mocks.verifyPassword).not.toHaveBeenCalled();
+  });
+
   it("allows a correct password after nine failed attempts and clears the counter", async () => {
     for (let attempt = 0; attempt < 9; attempt += 1) {
       await expect(authorize("Alice", "wrong-password")).resolves.toBeNull();

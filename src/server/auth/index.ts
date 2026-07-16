@@ -12,9 +12,15 @@ const auth = cache(async () => {
 
   const user = await db.user.findUnique({
     where: { id: session.user.id },
-    select: { id: true, role: true, displayName: true },
+    select: {
+      id: true,
+      role: true,
+      displayName: true,
+      username: true,
+      banned: true,
+    },
   });
-  if (!user) return null;
+  if (!user || user.banned) return null;
 
   return {
     ...session,
@@ -23,6 +29,7 @@ const auth = cache(async () => {
       id: user.id,
       name: user.displayName,
       displayName: user.displayName,
+      username: user.username,
       role: user.role,
     },
   };

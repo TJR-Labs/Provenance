@@ -17,26 +17,24 @@ function session(role: Role) {
       id: "user-1",
       role,
       displayName: "Test User",
+      username: "test-user",
       name: "Test User",
     },
   };
 }
 
 describe("adminProcedure", () => {
-  it.each([Role.COMPANY, Role.ENGINEER])(
-    "rejects a %s session with FORBIDDEN",
-    async (role) => {
-      const caller = roleTestRouter.createCaller({
-        db: {} as never,
-        headers: new Headers(),
-        session: session(role),
-      });
+  it("rejects a standard user session with FORBIDDEN", async () => {
+    const caller = roleTestRouter.createCaller({
+      db: {} as never,
+      headers: new Headers(),
+      session: session(Role.USER),
+    });
 
-      await expect(caller.adminOnly()).rejects.toMatchObject({
-        code: "FORBIDDEN",
-      });
-    },
-  );
+    await expect(caller.adminOnly()).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+  });
 
   it("rejects an anonymous caller with UNAUTHORIZED", async () => {
     const caller = roleTestRouter.createCaller({

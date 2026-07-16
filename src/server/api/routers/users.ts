@@ -5,8 +5,10 @@ import {
   adminProcedure,
   createTRPCRouter,
   protectedProcedure,
+  publicProcedure,
 } from "~/server/api/trpc";
 import {
+  banUser,
   changePassword,
   createUser,
   createUserInputSchema,
@@ -23,12 +25,13 @@ export const usersRouter = createTRPCRouter({
         username: true,
         role: true,
         displayName: true,
+        banned: true,
         createdAt: true,
       },
     }),
   ),
 
-  create: adminProcedure
+  signup: publicProcedure
     .input(createUserInputSchema)
     .mutation(async ({ ctx, input }) => {
       try {
@@ -41,11 +44,26 @@ export const usersRouter = createTRPCRouter({
       }
     }),
 
+  ban: adminProcedure
+    .input(z.object({ userId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      if (input.userId === ctx.session.user.id) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "You cannot ban your own account.",
+        });
+      }
+      await banUser(input.userId, ctx.db.user);
+      return { success: true as const };
+    }),
+
   changePassword: protectedProcedure
     .input(
       z.object({
         currentPassword: z.string().min(1, "Current password is required."),
-        newPassword: z.string().min(1, "New password is required."),
+        newPassword: z
+          .string()
+          .min(8, "New password must be at least 8 characters."),
       }),
     )
     .mutation(async ({ ctx, input }) => {

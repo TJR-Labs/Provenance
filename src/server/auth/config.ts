@@ -12,6 +12,7 @@ declare module "next-auth" {
       id: string;
       role: Role;
       displayName: string;
+      username: string;
     } & DefaultSession["user"];
   }
 }
@@ -55,6 +56,8 @@ export const authConfig = {
         const user = await db.user.findUnique({
           where: { username },
         });
+
+        if (user?.banned) return null;
 
         if (
           !user ||
@@ -112,9 +115,15 @@ export const authConfig = {
 
       const currentUser = await db.user.findUnique({
         where: { id: userId },
-        select: { id: true, role: true, displayName: true },
+        select: {
+          id: true,
+          role: true,
+          displayName: true,
+          username: true,
+          banned: true,
+        },
       });
-      if (!currentUser) return null;
+      if (!currentUser || currentUser.banned) return null;
 
       return {
         ...token,
@@ -122,6 +131,7 @@ export const authConfig = {
         name: currentUser.displayName,
         role: currentUser.role,
         displayName: currentUser.displayName,
+        username: currentUser.username,
       };
     },
     session({ session, token }) {
@@ -134,6 +144,7 @@ export const authConfig = {
           email: session.user?.email,
           image: session.user?.image,
           displayName,
+          username: token.username as string,
           role: token.role as Role,
         },
       };

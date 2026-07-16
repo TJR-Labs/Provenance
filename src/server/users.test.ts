@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { Role } from "../../generated/prisma";
 import { hashPassword } from "~/server/auth/password";
 import {
   changePassword,
@@ -21,10 +20,8 @@ describe("user accounts", () => {
     await expect(
       createUser(
         {
-          username: "ADMIN",
-          displayName: "Another Admin",
-          role: Role.ADMIN,
-          companyName: "",
+          username: "ALICE",
+          displayName: "Another Alice",
           password: "initial-password",
         },
         users as never,
@@ -32,22 +29,30 @@ describe("user accounts", () => {
     ).rejects.toBeInstanceOf(DuplicateUsernameError);
 
     expect(users.findUnique).toHaveBeenCalledWith({
-      where: { username: "admin" },
+      where: { username: "alice" },
       select: { id: true },
     });
     expect(users.create).not.toHaveBeenCalled();
   });
 
-  it("requires a company name for company users", () => {
+  it("requires a safe, public-URL-compatible username", () => {
     const result = createUserInputSchema.safeParse({
-      username: "company-user",
-      displayName: "Company User",
-      role: Role.COMPANY,
-      companyName: "",
+      username: "not a route",
+      displayName: "New User",
       password: "initial-password",
     });
 
     expect(result.success).toBe(false);
+  });
+
+  it("rejects usernames that collide with application routes", () => {
+    expect(
+      createUserInputSchema.safeParse({
+        username: "projects",
+        displayName: "Projects User",
+        password: "initial-password",
+      }).success,
+    ).toBe(false);
   });
 
   it("leaves the password unchanged when the current password is wrong", async () => {

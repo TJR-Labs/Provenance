@@ -7,10 +7,7 @@ import { hashPassword } from "../src/server/auth/password";
 type SeedUsers = {
   count: () => Promise<number>;
   create: (args: {
-    data: Pick<
-      User,
-      "username" | "passwordHash" | "role" | "displayName" | "companyName"
-    >;
+    data: Pick<User, "username" | "passwordHash" | "role" | "displayName">;
   }) => Promise<unknown>;
 };
 
@@ -41,7 +38,6 @@ export async function seedAdmin({
       passwordHash,
       role: Role.ADMIN,
       displayName: "Admin",
-      companyName: null,
     },
   });
 

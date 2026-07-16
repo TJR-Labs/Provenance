@@ -4,11 +4,20 @@ import { redirect } from "next/navigation";
 import { signIn } from "~/server/auth";
 
 type LoginPageProps = {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    created?: string;
+    returnTo?: string;
+  }>;
 };
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
-  const showError = Boolean((await searchParams).error);
+  const params = await searchParams;
+  const showError = Boolean(params.error);
+  const returnTo =
+    params.returnTo?.startsWith("/") && !params.returnTo.startsWith("//")
+      ? params.returnTo
+      : "/";
 
   async function login(formData: FormData) {
     "use server";
@@ -18,7 +27,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
       await signIn("credentials", {
         username: formData.get("username"),
         password: formData.get("password"),
-        redirectTo: "/",
+        redirectTo: returnTo,
       });
     } catch (error) {
       if (error instanceof AuthError) {
@@ -29,7 +38,9 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
     }
 
     if (invalidCredentials) {
-      redirect("/login?error=invalid-credentials");
+      redirect(
+        `/login?error=invalid-credentials&returnTo=${encodeURIComponent(returnTo)}`,
+      );
     }
   }
 
@@ -38,8 +49,14 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
       <div className="w-full max-w-md rounded-xl border border-slate-800 bg-slate-900 p-8 shadow-xl">
         <h1 className="text-3xl font-bold tracking-tight text-white">Log in</h1>
         <p className="mt-2 text-sm text-slate-400">
-          Use the credentials provided by a Provenance administrator.
+          Use your Provenance username and password.
         </p>
+
+        {params.created ? (
+          <p className="mt-6 rounded-md border border-emerald-900 bg-emerald-950/50 px-4 py-3 text-sm text-emerald-200">
+            Account created. You can log in now.
+          </p>
+        ) : null}
 
         {showError ? (
           <p

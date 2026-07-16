@@ -13,34 +13,46 @@ datasource db {
 }
 
 enum Role {
+  USER
   ADMIN
-  COMPANY
-  ENGINEER
 }
 
-enum BriefDomain {
-  SOFTWARE
-  ML_AI
-  HARDWARE_ROBOTICS
+enum Category {
+  SOFTWARE_ENGINEER
+  MECHANICAL_ENGINEER
+  ELECTRICAL_ENGINEER
+  ROBOTICS_ENGINEER
+  ARCHITECT
+  ARTIST
+  DESIGNER
+  DATA_SCIENTIST
+  WRITER
+  OTHER
 }
 
-enum BriefStatus {
-  OPEN
-  CLOSED
+enum MediaKind {
+  UPLOAD
+  EXTERNAL
 }
 
 model User {
-  id            String       @id @default(cuid())
-  username      String       @unique
-  passwordHash  String
-  role          Role
-  displayName   String
-  companyName   String?
-  createdAt     DateTime     @default(now())
-  briefs        Brief[]
-  submissions   Submission[]
-  sentMessages  Message[]    @relation("CompanyMessages")
-  inboxMessages Message[]    @relation("EngineerMessages")
+  id             String    @id @default(cuid())
+  username       String    @unique
+  passwordHash   String
+  role           Role      @default(USER)
+  displayName    String
+  bio            String?
+  school         String?
+  avatarUrl      String?
+  links          Json?
+  theme          String    @default("default")
+  layoutSections Json?
+  customCss      String?
+  banned         Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  projects       Project[]
+  reportsMade    Report[]  @relation("ReportsMade")
+  reportsAgainst Report[]  @relation("ReportsAgainstUser")
 }
 
 model LoginAttempt {
@@ -50,81 +62,49 @@ model LoginAttempt {
   lockedUntil   DateTime?
 }
 
-model Brief {
-  id           String            @id @default(cuid())
-  companyId    String
-  company      User              @relation(fields: [companyId], references: [id])
-  title        String
-  summary      String
-  description  String
-  domain       BriefDomain
-  deliverables String
-  status       BriefStatus       @default(OPEN)
-  createdAt    DateTime          @default(now())
-  closedAt     DateTime?
-  submissions  Submission[]
-  criteria     RubricCriterion[]
-  messages     Message[]
+model Project {
+  id          String         @id @default(cuid())
+  userId      String
+  user        User           @relation(fields: [userId], references: [id])
+  title       String
+  description String
+  category    Category
+  hashtags    String[]
+  links       String[]
+  layout      String         @default("default")
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  media       ProjectMedia[]
+  reports     Report[]
 
-  @@index([companyId])
-  @@index([status, domain, createdAt])
+  @@index([userId])
+  @@index([category])
 }
 
-model Submission {
-  id           String   @id @default(cuid())
-  briefId      String
-  brief        Brief    @relation(fields: [briefId], references: [id])
-  engineerId   String
-  engineer     User     @relation(fields: [engineerId], references: [id])
-  repoUrl      String
-  demoUrl      String?
-  writeup      String
-  feedbackNote String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  scores       Score[]
+model ProjectMedia {
+  id        String    @id @default(cuid())
+  projectId String
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  kind      MediaKind
+  url       String
+  mimeType  String?
+  order     Int       @default(0)
 
-  @@unique([briefId, engineerId])
+  @@index([projectId])
 }
 
-model RubricCriterion {
-  id        String   @id @default(cuid())
-  briefId   String
-  brief     Brief    @relation(fields: [briefId], references: [id], onDelete: Cascade)
-  name      String
-  weight    Int
-  createdAt DateTime @default(now())
-  scores    Score[]
+model Report {
+  id             String   @id @default(cuid())
+  reporterId     String
+  reporter       User     @relation("ReportsMade", fields: [reporterId], references: [id])
+  projectId      String?
+  project        Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  reportedUserId String?
+  reportedUser   User?    @relation("ReportsAgainstUser", fields: [reportedUserId], references: [id])
+  reason         String?
+  createdAt      DateTime @default(now())
 
-  @@index([briefId, createdAt])
-}
-
-model Score {
-  id           String          @id @default(cuid())
-  submissionId String
-  submission   Submission      @relation(fields: [submissionId], references: [id], onDelete: Cascade)
-  criterionId  String
-  criterion    RubricCriterion @relation(fields: [criterionId], references: [id], onDelete: Cascade)
-  value        Int
-
-  @@unique([submissionId, criterionId])
-  @@index([criterionId])
-}
-
-model Message {
-  id            String    @id @default(cuid())
-  fromCompanyId String
-  fromCompany   User      @relation("CompanyMessages", fields: [fromCompanyId], references: [id])
-  toEngineerId  String
-  toEngineer    User      @relation("EngineerMessages", fields: [toEngineerId], references: [id])
-  briefId       String?
-  brief         Brief?    @relation(fields: [briefId], references: [id])
-  body          String
-  createdAt     DateTime  @default(now())
-  readAt        DateTime?
-
-  @@index([fromCompanyId, createdAt])
-  @@index([toEngineerId, createdAt])
-  @@index([toEngineerId, readAt])
-  @@index([briefId])
+  @@index([projectId])
+  @@index([reportedUserId])
+  @@index([createdAt])
 }

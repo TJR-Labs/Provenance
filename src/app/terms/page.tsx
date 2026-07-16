@@ -9,15 +9,15 @@ export const metadata: Metadata = {
 const sections = [
   {
     heading: "Accounts & Access",
-    body: "[Placeholder — describe admin-provisioned account eligibility, access, credentials, and account responsibilities here]",
+    body: "[Placeholder — describe account eligibility, access, credentials, and account responsibilities here]",
   },
   {
     heading: "Acceptable Use",
-    body: "[Placeholder — describe permitted and prohibited use of the controlled-distribution talent marketplace here]",
+    body: "[Placeholder — describe permitted and prohibited use of the public portfolio platform here]",
   },
   {
-    heading: "Intellectual Property in Submissions",
-    body: "[Placeholder — describe ownership and permitted handling of work submitted through Provenance here]",
+    heading: "Intellectual Property in Projects",
+    body: "[Placeholder — describe ownership and permitted handling of work shared through Provenance here]",
   },
   {
     heading: "Termination",
