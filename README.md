@@ -89,6 +89,10 @@ npm test
 
 `npm run build` performs the production build and type checking. `npm test` runs the Vitest unit suite once and returns a nonzero exit code if a test fails.
 
+### Continuous integration
+
+GitHub Actions runs CI automatically on every push to `main` and every pull request targeting `main`. The workflow checks linting, type checking, tests, and the production build.
+
 ## Full-loop walkthrough
 
 This walkthrough exercises the complete Provenance flow with three accounts. It assumes the database schema has been created and the app is running locally.
