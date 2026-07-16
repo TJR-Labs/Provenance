@@ -2,6 +2,7 @@ import { AuthError } from "next-auth";
 import { redirect } from "next/navigation";
 
 import { signIn } from "~/server/auth";
+import { OAuthButtons } from "../oauth-buttons";
 
 type LoginPageProps = {
   searchParams: Promise<{
@@ -96,6 +97,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             Log in
           </button>
         </form>
+        <OAuthButtons redirectTo={returnTo} />
       </div>
     </section>
   );

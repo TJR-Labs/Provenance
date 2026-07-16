@@ -36,23 +36,64 @@ enum MediaKind {
 }
 
 model User {
-  id             String    @id @default(cuid())
-  username       String    @unique
-  passwordHash   String
-  role           Role      @default(USER)
-  displayName    String
-  bio            String?
-  school         String?
-  avatarUrl      String?
-  links          Json?
-  theme          String    @default("default")
-  layoutSections Json?
-  customCss      String?
-  banned         Boolean   @default(false)
-  createdAt      DateTime  @default(now())
-  projects       Project[]
-  reportsMade    Report[]  @relation("ReportsMade")
-  reportsAgainst Report[]  @relation("ReportsAgainstUser")
+  id               String            @id @default(cuid())
+  username         String            @unique
+  passwordHash     String?
+  email            String?           @unique
+  role             Role              @default(USER)
+  displayName      String
+  bio              String?
+  school           String?
+  avatarUrl        String?
+  links            Json?
+  theme            String            @default("default")
+  layoutSections   Json?
+  customCss        String?
+  banned           Boolean           @default(false)
+  createdAt        DateTime          @default(now())
+  projects         Project[]
+  reportsMade      Report[]          @relation("ReportsMade")
+  reportsAgainst   Report[]          @relation("ReportsAgainstUser")
+  accounts         Account[]
+  oauthLinkIntents OAuthLinkIntent[]
+}
+
+model Account {
+  id                String @id @default(cuid())
+  userId            String
+  user              User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider          String
+  providerAccountId String
+
+  @@unique([provider, providerAccountId])
+  @@unique([userId, provider])
+}
+
+model PendingOAuthSignup {
+  id                String   @id @default(cuid())
+  tokenHash         String   @unique
+  provider          String
+  providerAccountId String
+  email             String?
+  emailVerified     Boolean
+  name              String?
+  expiresAt         DateTime
+  completedUserId   String?
+  createdAt         DateTime @default(now())
+
+  @@index([expiresAt])
+}
+
+model OAuthLinkIntent {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider  String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
 }
 
 model LoginAttempt {

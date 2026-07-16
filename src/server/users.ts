@@ -1,4 +1,6 @@
-import { Role, type PrismaClient } from "../../generated/prisma";
+import { createHash, randomBytes } from "node:crypto";
+
+import { Role, type Prisma, type PrismaClient } from "../../generated/prisma";
 import { z } from "zod";
 
 import { hashPassword, verifyPassword } from "~/server/auth/password";
@@ -8,6 +10,22 @@ type UserDelegate = Pick<
   PrismaClient["user"],
   "create" | "findUnique" | "update"
 >;
+
+const oauthUserSelect = {
+  id: true,
+  username: true,
+  email: true,
+  role: true,
+  displayName: true,
+  banned: true,
+  passwordHash: true,
+} satisfies Prisma.UserSelect;
+
+export const oauthProviderSchema = z.enum(["google", "github"]);
+export type OAuthProvider = z.infer<typeof oauthProviderSchema>;
+
+export const OAUTH_LINK_COOKIE = "provenance.oauth-link";
+const OAUTH_FLOW_TTL_MS = 10 * 60 * 1000;
 
 const reservedUsernames = new Set([
   "account",
@@ -77,6 +95,50 @@ export class InvalidCurrentPasswordError extends Error {
   }
 }
 
+export class InvalidOAuthFlowError extends Error {
+  constructor() {
+    super("This OAuth request is invalid or has expired. Please try again.");
+    this.name = "InvalidOAuthFlowError";
+  }
+}
+
+export class OAuthAccountAlreadyLinkedError extends Error {
+  constructor() {
+    super("That provider account is already linked to a different user.");
+    this.name = "OAuthAccountAlreadyLinkedError";
+  }
+}
+
+export class OAuthProviderAlreadyLinkedError extends Error {
+  constructor(provider: OAuthProvider) {
+    super(
+      `A ${provider === "google" ? "Google" : "GitHub"} account is already linked.`,
+    );
+    this.name = "OAuthProviderAlreadyLinkedError";
+  }
+}
+
+export class LastSignInMethodError extends Error {
+  constructor() {
+    super("Set a password before unlinking your only connected account.");
+    this.name = "LastSignInMethodError";
+  }
+}
+
+export class PasswordAlreadySetError extends Error {
+  constructor() {
+    super("A password is already set for this account.");
+    this.name = "PasswordAlreadySetError";
+  }
+}
+
+export class OAuthUserBannedError extends Error {
+  constructor() {
+    super("This account is not permitted to sign in.");
+    this.name = "OAuthUserBannedError";
+  }
+}
+
 function isUniqueConstraintError(error: unknown) {
   return (
     typeof error === "object" &&
@@ -84,6 +146,460 @@ function isUniqueConstraintError(error: unknown) {
     "code" in error &&
     error.code === "P2002"
   );
+}
+
+function normalizeEmail(email: string | null | undefined) {
+  const normalized = email?.trim().toLowerCase();
+  if (!normalized) return null;
+  return normalized;
+}
+
+function oauthDisplayName(name: string | null, username: string) {
+  const normalized = name?.trim();
+  if (!normalized) return username;
+  return normalized;
+}
+
+function createOAuthToken() {
+  return randomBytes(32).toString("base64url");
+}
+
+function hashOAuthToken(token: string) {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+export function oauthUsernamePickerPath(token: string) {
+  return `/signup/username?token=${encodeURIComponent(token)}`;
+}
+
+function assertActiveUser(user: { banned: boolean }) {
+  if (user.banned) throw new OAuthUserBannedError();
+}
+
+type OAuthAccountDelegate = Pick<
+  Prisma.TransactionClient["account"],
+  "create" | "findFirst" | "findUnique"
+>;
+
+async function createAccountLink(
+  userId: string,
+  provider: OAuthProvider,
+  providerAccountId: string,
+  accounts: OAuthAccountDelegate,
+) {
+  const linkedAccount = await accounts.findUnique({
+    where: {
+      provider_providerAccountId: { provider, providerAccountId },
+    },
+    select: { userId: true },
+  });
+  if (linkedAccount) {
+    if (linkedAccount.userId !== userId) {
+      throw new OAuthAccountAlreadyLinkedError();
+    }
+    return;
+  }
+
+  const existingProvider = await accounts.findFirst({
+    where: { userId, provider },
+    select: { id: true },
+  });
+  if (existingProvider) throw new OAuthProviderAlreadyLinkedError(provider);
+
+  try {
+    await accounts.create({
+      data: { userId, provider, providerAccountId },
+    });
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      const racedAccount = await accounts.findUnique({
+        where: {
+          provider_providerAccountId: { provider, providerAccountId },
+        },
+        select: { userId: true },
+      });
+      if (racedAccount?.userId === userId) return;
+      throw new OAuthAccountAlreadyLinkedError();
+    }
+    throw error;
+  }
+}
+
+export type OAuthSignInProfile = {
+  provider: OAuthProvider;
+  providerAccountId: string;
+  email: string | null;
+  emailVerified: boolean;
+  name: string | null;
+};
+
+export async function linkOAuthAccount(
+  userId: string,
+  provider: OAuthProvider,
+  providerAccountId: string,
+  database: PrismaClient = db,
+) {
+  const parsedProvider = oauthProviderSchema.parse(provider);
+  const user = await database.user.findUnique({
+    where: { id: userId },
+    select: { banned: true },
+  });
+  if (!user) throw new InvalidOAuthFlowError();
+  assertActiveUser(user);
+  await createAccountLink(
+    userId,
+    parsedProvider,
+    providerAccountId,
+    database.account,
+  );
+}
+
+export async function resolveOAuthSignIn(
+  rawProfile: OAuthSignInProfile,
+  database: PrismaClient = db,
+) {
+  const profile = {
+    ...rawProfile,
+    provider: oauthProviderSchema.parse(rawProfile.provider),
+    email: normalizeEmail(rawProfile.email),
+  };
+  const linkedAccount = await database.account.findUnique({
+    where: {
+      provider_providerAccountId: {
+        provider: profile.provider,
+        providerAccountId: profile.providerAccountId,
+      },
+    },
+    select: { user: { select: oauthUserSelect } },
+  });
+  if (linkedAccount) {
+    assertActiveUser(linkedAccount.user);
+    return { kind: "user" as const, user: linkedAccount.user };
+  }
+
+  if (profile.emailVerified && profile.email) {
+    const emailUser = await database.user.findUnique({
+      where: { email: profile.email },
+      select: oauthUserSelect,
+    });
+    if (emailUser) {
+      assertActiveUser(emailUser);
+      await createAccountLink(
+        emailUser.id,
+        profile.provider,
+        profile.providerAccountId,
+        database.account,
+      );
+      return { kind: "user" as const, user: emailUser };
+    }
+  }
+
+  const now = new Date();
+  await database.pendingOAuthSignup.deleteMany({
+    where: {
+      OR: [
+        { expiresAt: { lte: now } },
+        {
+          provider: profile.provider,
+          providerAccountId: profile.providerAccountId,
+          completedUserId: null,
+        },
+      ],
+    },
+  });
+  const token = createOAuthToken();
+  await database.pendingOAuthSignup.create({
+    data: {
+      tokenHash: hashOAuthToken(token),
+      provider: profile.provider,
+      providerAccountId: profile.providerAccountId,
+      email: profile.email,
+      emailVerified: profile.emailVerified,
+      name: profile.name,
+      expiresAt: new Date(now.getTime() + OAUTH_FLOW_TTL_MS),
+    },
+  });
+  return { kind: "pending" as const, token };
+}
+
+export async function getPendingOAuthSignup(
+  token: string,
+  database: PrismaClient = db,
+) {
+  const pending = await database.pendingOAuthSignup.findUnique({
+    where: { tokenHash: hashOAuthToken(token) },
+    select: {
+      provider: true,
+      name: true,
+      expiresAt: true,
+      completedUserId: true,
+    },
+  });
+  if (!pending || pending.expiresAt <= new Date() || pending.completedUserId) {
+    return null;
+  }
+  return {
+    provider: oauthProviderSchema.parse(pending.provider),
+    name: pending.name,
+  };
+}
+
+export async function completeOAuthSignup(
+  token: string,
+  rawUsername: string,
+  database: PrismaClient = db,
+) {
+  const username = usernameSchema.parse(rawUsername).toLowerCase();
+  const tokenHash = hashOAuthToken(token);
+
+  try {
+    return await database.$transaction(async (transaction) => {
+      const pending = await transaction.pendingOAuthSignup.findUnique({
+        where: { tokenHash },
+      });
+      if (!pending || pending.expiresAt <= new Date()) {
+        throw new InvalidOAuthFlowError();
+      }
+      if (pending.completedUserId) {
+        const completedUser = await transaction.user.findUnique({
+          where: { id: pending.completedUserId },
+          select: oauthUserSelect,
+        });
+        if (!completedUser) throw new InvalidOAuthFlowError();
+        assertActiveUser(completedUser);
+        return completedUser;
+      }
+
+      const provider = oauthProviderSchema.parse(pending.provider);
+      const verifiedEmail = pending.emailVerified
+        ? normalizeEmail(pending.email)
+        : null;
+      if (verifiedEmail) {
+        const emailUser = await transaction.user.findUnique({
+          where: { email: verifiedEmail },
+          select: oauthUserSelect,
+        });
+        if (emailUser) {
+          assertActiveUser(emailUser);
+          await createAccountLink(
+            emailUser.id,
+            provider,
+            pending.providerAccountId,
+            transaction.account,
+          );
+          await transaction.pendingOAuthSignup.update({
+            where: { id: pending.id },
+            data: { completedUserId: emailUser.id },
+          });
+          return emailUser;
+        }
+      }
+
+      const duplicateUsername = await transaction.user.findUnique({
+        where: { username },
+        select: { id: true },
+      });
+      if (duplicateUsername) throw new DuplicateUsernameError();
+
+      const user = await transaction.user.create({
+        data: {
+          username,
+          displayName: oauthDisplayName(pending.name, username),
+          email: verifiedEmail,
+          passwordHash: null,
+          role: Role.USER,
+        },
+        select: oauthUserSelect,
+      });
+      await transaction.account.create({
+        data: {
+          userId: user.id,
+          provider,
+          providerAccountId: pending.providerAccountId,
+        },
+      });
+      await transaction.pendingOAuthSignup.update({
+        where: { id: pending.id },
+        data: { completedUserId: user.id },
+      });
+      return user;
+    });
+  } catch (error) {
+    if (error instanceof DuplicateUsernameError) throw error;
+    if (isUniqueConstraintError(error)) {
+      const duplicateUsername = await database.user.findUnique({
+        where: { username },
+        select: { id: true },
+      });
+      if (duplicateUsername) throw new DuplicateUsernameError();
+    }
+    throw error;
+  }
+}
+
+export async function consumeCompletedOAuthSignup(
+  token: string,
+  database: PrismaClient = db,
+) {
+  const tokenHash = hashOAuthToken(token);
+  return database.$transaction(async (transaction) => {
+    const pending = await transaction.pendingOAuthSignup.findUnique({
+      where: { tokenHash },
+      select: { id: true, expiresAt: true, completedUserId: true },
+    });
+    if (
+      !pending ||
+      pending.expiresAt <= new Date() ||
+      !pending.completedUserId
+    ) {
+      return null;
+    }
+    const user = await transaction.user.findUnique({
+      where: { id: pending.completedUserId },
+      select: oauthUserSelect,
+    });
+    await transaction.pendingOAuthSignup.delete({ where: { id: pending.id } });
+    if (!user || user.banned) return null;
+    return user;
+  });
+}
+
+export async function beginOAuthLink(
+  userId: string,
+  provider: OAuthProvider,
+  database: PrismaClient = db,
+) {
+  const parsedProvider = oauthProviderSchema.parse(provider);
+  const user = await database.user.findUnique({
+    where: { id: userId },
+    select: { banned: true },
+  });
+  if (!user) throw new InvalidOAuthFlowError();
+  assertActiveUser(user);
+
+  const now = new Date();
+  await database.oAuthLinkIntent.deleteMany({
+    where: {
+      OR: [{ expiresAt: { lte: now } }, { userId, provider: parsedProvider }],
+    },
+  });
+  const token = createOAuthToken();
+  await database.oAuthLinkIntent.create({
+    data: {
+      tokenHash: hashOAuthToken(token),
+      userId,
+      provider: parsedProvider,
+      expiresAt: new Date(now.getTime() + OAUTH_FLOW_TTL_MS),
+    },
+  });
+  return token;
+}
+
+export async function completeOAuthLink(
+  token: string,
+  profile: Pick<OAuthSignInProfile, "provider" | "providerAccountId">,
+  database: PrismaClient = db,
+) {
+  const tokenHash = hashOAuthToken(token);
+  const provider = oauthProviderSchema.parse(profile.provider);
+  return database.$transaction(async (transaction) => {
+    const intent = await transaction.oAuthLinkIntent.findUnique({
+      where: { tokenHash },
+    });
+    if (
+      !intent ||
+      intent.expiresAt <= new Date() ||
+      intent.provider !== provider
+    ) {
+      throw new InvalidOAuthFlowError();
+    }
+    const user = await transaction.user.findUnique({
+      where: { id: intent.userId },
+      select: oauthUserSelect,
+    });
+    if (!user) throw new InvalidOAuthFlowError();
+    assertActiveUser(user);
+    await createAccountLink(
+      user.id,
+      provider,
+      profile.providerAccountId,
+      transaction.account,
+    );
+    await transaction.oAuthLinkIntent.delete({ where: { id: intent.id } });
+    return user;
+  });
+}
+
+export async function getAccountSecurity(
+  userId: string,
+  database: PrismaClient = db,
+) {
+  const user = await database.user.findUnique({
+    where: { id: userId },
+    select: {
+      passwordHash: true,
+      accounts: { select: { provider: true } },
+    },
+  });
+  if (!user) throw new InvalidOAuthFlowError();
+  return {
+    hasPassword: Boolean(user.passwordHash),
+    linkedProviders: user.accounts.map((account) =>
+      oauthProviderSchema.parse(account.provider),
+    ),
+  };
+}
+
+export async function unlinkOAuthAccount(
+  userId: string,
+  provider: OAuthProvider,
+  database: PrismaClient = db,
+) {
+  const parsedProvider = oauthProviderSchema.parse(provider);
+  await database.$transaction(async (transaction) => {
+    const user = await transaction.user.findUnique({
+      where: { id: userId },
+      select: { passwordHash: true },
+    });
+    if (!user) throw new InvalidOAuthFlowError();
+
+    const account = await transaction.account.findFirst({
+      where: { userId, provider: parsedProvider },
+      select: { id: true },
+    });
+    if (!account) throw new InvalidOAuthFlowError();
+
+    const linkedAccountCount = await transaction.account.count({
+      where: { userId },
+    });
+    if (!user.passwordHash && linkedAccountCount <= 1) {
+      throw new LastSignInMethodError();
+    }
+    await transaction.account.delete({ where: { id: account.id } });
+  });
+}
+
+export async function setPassword(
+  userId: string,
+  newPassword: string,
+  database: PrismaClient = db,
+) {
+  const password = z
+    .string()
+    .min(8, "New password must be at least 8 characters.")
+    .parse(newPassword);
+  const user = await database.user.findUnique({
+    where: { id: userId },
+    select: { passwordHash: true },
+  });
+  if (!user) throw new InvalidOAuthFlowError();
+  if (user.passwordHash) throw new PasswordAlreadySetError();
+
+  const result = await database.user.updateMany({
+    where: { id: userId, passwordHash: null },
+    data: { passwordHash: await hashPassword(password) },
+  });
+  if (result.count !== 1) throw new PasswordAlreadySetError();
 }
 
 export async function createUser(

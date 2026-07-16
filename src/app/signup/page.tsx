@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { getServerCaller } from "~/server/api/caller";
+import { OAuthButtons } from "../oauth-buttons";
 
 type SignupPageProps = {
   searchParams: Promise<{ error?: string }>;
@@ -91,6 +92,7 @@ export default async function SignupPage({ searchParams }: SignupPageProps) {
             Sign up
           </button>
         </form>
+        <OAuthButtons />
       </div>
     </section>
   );

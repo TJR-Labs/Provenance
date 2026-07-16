@@ -12,6 +12,10 @@ export const env = createEnv({
         ? z.string()
         : z.string().optional(),
     ADMIN_PASSWORD: z.string().optional(),
+    GOOGLE_CLIENT_ID: z.string().min(1).optional(),
+    GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
+    GITHUB_CLIENT_ID: z.string().min(1).optional(),
+    GITHUB_CLIENT_SECRET: z.string().min(1).optional(),
     DATABASE_URL: z.string().url(),
     DIRECT_URL: z.string().url(),
     SUPABASE_URL: z.string().url().optional(),
@@ -38,6 +42,10 @@ export const env = createEnv({
   runtimeEnv: {
     AUTH_SECRET: process.env.AUTH_SECRET,
     ADMIN_PASSWORD: process.env.ADMIN_PASSWORD,
+    GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
+    GITHUB_CLIENT_ID: process.env.GITHUB_CLIENT_ID,
+    GITHUB_CLIENT_SECRET: process.env.GITHUB_CLIENT_SECRET,
     DATABASE_URL: process.env.DATABASE_URL,
     DIRECT_URL: process.env.DIRECT_URL,
     SUPABASE_URL: process.env.SUPABASE_URL,

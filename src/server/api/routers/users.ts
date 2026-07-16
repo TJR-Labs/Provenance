@@ -9,11 +9,23 @@ import {
 } from "~/server/api/trpc";
 import {
   banUser,
+  beginOAuthLink,
   changePassword,
+  completeOAuthSignup,
   createUser,
   createUserInputSchema,
   DuplicateUsernameError,
+  getAccountSecurity,
+  getPendingOAuthSignup,
   InvalidCurrentPasswordError,
+  InvalidOAuthFlowError,
+  LastSignInMethodError,
+  OAuthAccountAlreadyLinkedError,
+  OAuthProviderAlreadyLinkedError,
+  oauthProviderSchema,
+  PasswordAlreadySetError,
+  setPassword,
+  unlinkOAuthAccount,
 } from "~/server/users";
 
 export const usersRouter = createTRPCRouter({
@@ -39,6 +51,36 @@ export const usersRouter = createTRPCRouter({
       } catch (error) {
         if (error instanceof DuplicateUsernameError) {
           throw new TRPCError({ code: "CONFLICT", message: error.message });
+        }
+        throw error;
+      }
+    }),
+
+  pendingOAuthSignup: publicProcedure
+    .input(z.object({ token: z.string().min(1) }))
+    .query(({ ctx, input }) => getPendingOAuthSignup(input.token, ctx.db)),
+
+  completeOAuthSignup: publicProcedure
+    .input(
+      z.object({
+        token: z.string().min(1),
+        username: z.string(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        await completeOAuthSignup(input.token, input.username, ctx.db);
+        return { success: true as const };
+      } catch (error) {
+        if (error instanceof DuplicateUsernameError) {
+          throw new TRPCError({ code: "CONFLICT", message: error.message });
+        }
+        if (
+          error instanceof InvalidOAuthFlowError ||
+          error instanceof OAuthAccountAlreadyLinkedError ||
+          error instanceof OAuthProviderAlreadyLinkedError
+        ) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: error.message });
         }
         throw error;
       }
@@ -77,6 +119,53 @@ export const usersRouter = createTRPCRouter({
         return { success: true as const };
       } catch (error) {
         if (error instanceof InvalidCurrentPasswordError) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: error.message });
+        }
+        throw error;
+      }
+    }),
+
+  accountSecurity: protectedProcedure.query(({ ctx }) =>
+    getAccountSecurity(ctx.session.user.id, ctx.db),
+  ),
+
+  beginOAuthLink: protectedProcedure
+    .input(z.object({ provider: oauthProviderSchema }))
+    .mutation(async ({ ctx, input }) => ({
+      token: await beginOAuthLink(ctx.session.user.id, input.provider, ctx.db),
+    })),
+
+  unlinkOAuthAccount: protectedProcedure
+    .input(z.object({ provider: oauthProviderSchema }))
+    .mutation(async ({ ctx, input }) => {
+      try {
+        await unlinkOAuthAccount(ctx.session.user.id, input.provider, ctx.db);
+        return { success: true as const };
+      } catch (error) {
+        if (
+          error instanceof LastSignInMethodError ||
+          error instanceof InvalidOAuthFlowError
+        ) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: error.message });
+        }
+        throw error;
+      }
+    }),
+
+  setPassword: protectedProcedure
+    .input(
+      z.object({
+        newPassword: z
+          .string()
+          .min(8, "New password must be at least 8 characters."),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        await setPassword(ctx.session.user.id, input.newPassword, ctx.db);
+        return { success: true as const };
+      } catch (error) {
+        if (error instanceof PasswordAlreadySetError) {
           throw new TRPCError({ code: "BAD_REQUEST", message: error.message });
         }
         throw error;
