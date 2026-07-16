@@ -21,6 +21,10 @@ const credentialsSchema = z.object({
   password: z.string().min(1),
 });
 
+const LOGIN_FAILURE_THRESHOLD = 10;
+const LOGIN_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_LOCKOUT_DURATION_MS = 15 * 60 * 1000;
+
 export const authConfig = {
   pages: {
     signIn: "/login",
@@ -38,16 +42,58 @@ export const authConfig = {
         const parsed = credentialsSchema.safeParse(credentials);
         if (!parsed.success) return null;
 
+        const username = parsed.data.username.toLowerCase();
+        const now = new Date();
+        const loginAttempt = await db.loginAttempt.findUnique({
+          where: { username },
+        });
+
+        if (loginAttempt?.lockedUntil && loginAttempt.lockedUntil > now) {
+          return null;
+        }
+
         const user = await db.user.findUnique({
-          where: { username: parsed.data.username.toLowerCase() },
+          where: { username },
         });
 
         if (
           !user ||
           !(await verifyPassword(parsed.data.password, user.passwordHash))
         ) {
+          let startsNewWindow = true;
+          let failedCount = 1;
+          if (
+            loginAttempt?.lockedUntil === null &&
+            now.getTime() - loginAttempt.firstFailedAt.getTime() <
+              LOGIN_ATTEMPT_WINDOW_MS
+          ) {
+            startsNewWindow = false;
+            failedCount = loginAttempt.failedCount + 1;
+          }
+          const lockedUntil =
+            failedCount >= LOGIN_FAILURE_THRESHOLD
+              ? new Date(now.getTime() + LOGIN_LOCKOUT_DURATION_MS)
+              : null;
+
+          await db.loginAttempt.upsert({
+            where: { username },
+            create: {
+              username,
+              failedCount,
+              firstFailedAt: now,
+              lockedUntil,
+            },
+            update: {
+              failedCount,
+              ...(startsNewWindow && { firstFailedAt: now }),
+              lockedUntil,
+            },
+          });
+
           return null;
         }
+
+        await db.loginAttempt.deleteMany({ where: { username } });
 
         return {
           id: user.id,

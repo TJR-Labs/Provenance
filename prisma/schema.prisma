@@ -43,6 +43,13 @@ model User {
   inboxMessages Message[]    @relation("EngineerMessages")
 }
 
+model LoginAttempt {
+  username      String    @id
+  failedCount   Int
+  firstFailedAt DateTime
+  lockedUntil   DateTime?
+}
+
 model Brief {
   id           String            @id @default(cuid())
   companyId    String

@@ -68,6 +68,10 @@ There is no self-signup flow. Sign in at `http://localhost:3000/login` as the se
 
 Signed-in users can change their own password from **Account** in the navigation. The current password is required.
 
+### Login lockout
+
+A username is locked for 15 minutes after 10 failed login attempts within a 15-minute window. To clear a lock early, an administrator can run `npx prisma studio`, open `LoginAttempt`, and delete the row for that username.
+
 ### Run locally
 
 ```powershell
