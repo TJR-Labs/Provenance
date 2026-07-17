@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   useCallback,
   useEffect,
@@ -11,6 +12,7 @@ import {
 } from "react";
 
 import { ProjectCard } from "~/app/project-card";
+import { safeExternalUrl } from "~/app/safe-external-url";
 import {
   CANVAS_MAX_HEIGHT,
   CANVAS_MIN_HEIGHT,
@@ -20,19 +22,27 @@ import {
 import { api } from "~/trpc/react";
 import { AUTOSAVE_INTERVAL_MS, createAutosaveController } from "./autosave";
 import {
+  bringElementToFront,
   clampElement,
   DEFAULT_ELEMENT_SIZE,
+  resizeFromCorner,
   type CanvasBounds,
+  type Corner,
 } from "./canvas-math";
 
 type EditorProject = ComponentProps<typeof ProjectCard>["project"];
 type ProfileLink = { label: string; url: string };
-type ElementType = "ABOUT" | "LINKS" | "PROJECT";
+type ElementType = "ABOUT" | "LINKS" | "PROJECT" | "TEXT" | "IMAGE" | "LINK";
 
 type EditorElement = {
   key: string;
   type: ElementType;
   projectId: string | null;
+  textContent: string | null;
+  imageUrl: string | null;
+  imageCaption: string | null;
+  linkLabel: string | null;
+  linkUrl: string | null;
   x: number;
   y: number;
   width: number;
@@ -43,6 +53,11 @@ type EditorElement = {
 type ElementPayload = {
   type: ElementType;
   projectId?: string;
+  textContent?: string;
+  imageUrl?: string;
+  imageCaption?: string;
+  linkLabel?: string;
+  linkUrl?: string;
   x: number;
   y: number;
   width: number;
@@ -53,12 +68,69 @@ type ElementPayload = {
 type DragState = {
   key: string;
   mode: "move" | "resize";
+  corner: Corner | null;
   pointerId: number;
   startClientX: number;
   startClientY: number;
   origin: { x: number; y: number; width: number; height: number };
   moved: boolean;
 };
+
+type ContextMenuState = { key: string; x: number; y: number };
+
+// Inline Add Component / edit panel. `editKey` is null when creating a new
+// element and set to the element's key when editing an existing one.
+type PanelState =
+  | { kind: "TEXT"; editKey: string | null; initialHtml: string }
+  | {
+      kind: "IMAGE";
+      editKey: string | null;
+      initialImageUrl: string;
+      initialCaption: string;
+    }
+  | {
+      kind: "LINK";
+      editKey: string | null;
+      initialLabel: string;
+      initialUrl: string;
+    };
+
+// Freeform elements are created via Add Component, can appear any number of
+// times, and have no unplaced Library state.
+const FREEFORM_TYPES = new Set<ElementType>(["TEXT", "IMAGE", "LINK"]);
+
+const RESIZE_HANDLES: { corner: Corner; className: string }[] = [
+  {
+    corner: "top-left",
+    className: "top-0 left-0 cursor-nwse-resize rounded-br border-r-2 border-b-2",
+  },
+  {
+    corner: "top-right",
+    className: "top-0 right-0 cursor-nesw-resize rounded-bl border-b-2 border-l-2",
+  },
+  {
+    corner: "bottom-left",
+    className:
+      "bottom-0 left-0 cursor-nesw-resize rounded-tr border-t-2 border-r-2",
+  },
+  {
+    corner: "bottom-right",
+    className:
+      "bottom-0 right-0 cursor-nwse-resize rounded-tl border-t-2 border-l-2",
+  },
+];
+
+// Favicon comes from a third-party favicon-by-domain service via a plain
+// client-side <img> request — the app never fetches the target URL itself.
+function faviconUrl(linkUrl: string) {
+  try {
+    return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(
+      new URL(linkUrl).hostname,
+    )}`;
+  } catch {
+    return null;
+  }
+}
 
 type CanvasEditorProps = {
   bio: string | null;
@@ -79,6 +151,9 @@ const elementLabels: Record<ElementType, string> = {
   ABOUT: "About",
   LINKS: "Links",
   PROJECT: "Project",
+  TEXT: "Text",
+  IMAGE: "Image",
+  LINK: "Link",
 };
 
 function toPayload(elements: EditorElement[]): ElementPayload[] {
@@ -86,6 +161,18 @@ function toPayload(elements: EditorElement[]): ElementPayload[] {
     type: element.type,
     ...(element.type === "PROJECT" && element.projectId
       ? { projectId: element.projectId }
+      : {}),
+    ...(element.type === "TEXT" && element.textContent
+      ? { textContent: element.textContent }
+      : {}),
+    ...(element.type === "IMAGE" && element.imageUrl
+      ? {
+          imageUrl: element.imageUrl,
+          ...(element.imageCaption ? { imageCaption: element.imageCaption } : {}),
+        }
+      : {}),
+    ...(element.type === "LINK" && element.linkLabel && element.linkUrl
+      ? { linkLabel: element.linkLabel, linkUrl: element.linkUrl }
       : {}),
     x: element.x,
     y: element.y,
@@ -100,6 +187,7 @@ function maxZIndex(elements: EditorElement[]) {
 }
 
 export function CanvasEditor({ bio, links, projects }: CanvasEditorProps) {
+  const router = useRouter();
   const editorState = api.canvas.getEditorState.useQuery(undefined, {
     refetchOnWindowFocus: false,
   });
@@ -112,6 +200,10 @@ export function CanvasEditor({ bio, links, projects }: CanvasEditorProps) {
   const [publishStatus, setPublishStatus] = useState<
     "idle" | "pending" | "success" | "error"
   >("idle");
+  // A single state slot means only one context menu can be open at a time;
+  // opening a new one replaces the previous.
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [panel, setPanel] = useState<PanelState | null>(null);
 
   const elementsRef = useRef<EditorElement[] | null>(null);
   elementsRef.current = elements;
@@ -132,6 +224,11 @@ export function CanvasEditor({ bio, links, projects }: CanvasEditorProps) {
           key: element.id,
           type: element.type,
           projectId: element.projectId,
+          textContent: element.textContent,
+          imageUrl: element.imageUrl,
+          imageCaption: element.imageCaption,
+          linkLabel: element.linkLabel,
+          linkUrl: element.linkUrl,
           x: element.x,
           y: element.y,
           width: element.width,
@@ -217,6 +314,22 @@ export function CanvasEditor({ bio, links, projects }: CanvasEditorProps) {
     controllerRef.current?.notifyChange();
   }, []);
 
+  // Close the context menu on any outside click or Escape. The menu itself
+  // stops pointerdown propagation so its own actions still fire.
+  useEffect(() => {
+    if (!contextMenu) return;
+    const onPointerDown = () => setContextMenu(null);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setContextMenu(null);
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [contextMenu]);
+
   async function handlePublish() {
     const snapshot = elementsRef.current;
     if (!snapshot || publishStatus === "pending") return;
@@ -243,13 +356,9 @@ export function CanvasEditor({ bio, links, projects }: CanvasEditorProps) {
   }
 
   function bringToFront(key: string) {
-    setElements((current) => {
-      if (!current) return current;
-      const nextZ = maxZIndex(current) + 1;
-      return current.map((element) =>
-        element.key === key ? { ...element, zIndex: nextZ } : element,
-      );
-    });
+    setElements((current) =>
+      current ? bringElementToFront(current, key) : current,
+    );
   }
 
   function removeElement(key: string) {
@@ -260,14 +369,25 @@ export function CanvasEditor({ bio, links, projects }: CanvasEditorProps) {
   }
 
   function addElement(
-    item: { type: ElementType; projectId?: string },
+    item: {
+      type: ElementType;
+      projectId?: string;
+      textContent?: string;
+      imageUrl?: string;
+      imageCaption?: string;
+      linkLabel?: string;
+      linkUrl?: string;
+    },
     dropX: number,
     dropY: number,
   ) {
     setElements((current) => {
       if (!current) return current;
-      const alreadyPlaced =
-        item.type === "PROJECT"
+      // Text/Image/Link are freeform: any number may coexist, so the
+      // uniqueness gate only applies to About/Links/Project.
+      const alreadyPlaced = FREEFORM_TYPES.has(item.type)
+        ? false
+        : item.type === "PROJECT"
           ? current.some((element) => element.projectId === item.projectId)
           : current.some((element) => element.type === item.type);
       if (alreadyPlaced) return current;
@@ -285,6 +405,11 @@ export function CanvasEditor({ bio, links, projects }: CanvasEditorProps) {
           key: `new-${keyCounter.current}`,
           type: item.type,
           projectId: item.projectId ?? null,
+          textContent: item.textContent ?? null,
+          imageUrl: item.imageUrl ?? null,
+          imageCaption: item.imageCaption ?? null,
+          linkLabel: item.linkLabel ?? null,
+          linkUrl: item.linkUrl ?? null,
           ...clamped,
           zIndex: maxZIndex(current) + 1,
         },
@@ -293,16 +418,74 @@ export function CanvasEditor({ bio, links, projects }: CanvasEditorProps) {
     markDirty();
   }
 
+  function patchElement(key: string, patch: Partial<EditorElement>) {
+    setElements((current) =>
+      current
+        ? current.map((element) =>
+            element.key === key ? { ...element, ...patch } : element,
+          )
+        : current,
+    );
+    markDirty();
+  }
+
+  function openContextMenu(
+    event: React.MouseEvent<HTMLElement>,
+    element: EditorElement,
+  ) {
+    event.preventDefault();
+    // Ignore right-clicks while a pointer-captured drag is in progress.
+    if (dragRef.current) return;
+    setContextMenu({ key: element.key, x: event.clientX, y: event.clientY });
+  }
+
+  function handleEdit(element: EditorElement) {
+    if (element.type === "ABOUT" || element.type === "LINKS") {
+      // The autosave controller's unmount cleanup flushes pending changes.
+      router.push("/profile/edit");
+      return;
+    }
+    if (element.type === "PROJECT") {
+      if (element.projectId) router.push(`/projects/${element.projectId}/edit`);
+      return;
+    }
+    if (element.type === "TEXT") {
+      setPanel({
+        kind: "TEXT",
+        editKey: element.key,
+        initialHtml: element.textContent ?? "",
+      });
+      return;
+    }
+    if (element.type === "IMAGE") {
+      setPanel({
+        kind: "IMAGE",
+        editKey: element.key,
+        initialImageUrl: element.imageUrl ?? "",
+        initialCaption: element.imageCaption ?? "",
+      });
+      return;
+    }
+    setPanel({
+      kind: "LINK",
+      editKey: element.key,
+      initialLabel: element.linkLabel ?? "",
+      initialUrl: element.linkUrl ?? "",
+    });
+  }
+
   function startDrag(
     event: React.PointerEvent<HTMLElement>,
     element: EditorElement,
     mode: "move" | "resize",
+    corner: Corner | null = null,
   ) {
     if (event.button !== 0) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     dragRef.current = {
       key: element.key,
       mode,
+      corner,
       pointerId: event.pointerId,
       startClientX: event.clientX,
       startClientY: event.clientY,
@@ -314,13 +497,17 @@ export function CanvasEditor({ bio, links, projects }: CanvasEditorProps) {
       },
       moved: false,
     };
+    // Pressing an element brings it to front immediately — even a plain
+    // click with no drag — and the new stacking order must persist.
+    bringToFront(element.key);
+    markDirty();
   }
 
   function onDragPointerMove(event: React.PointerEvent<HTMLElement>) {
     const drag = dragRef.current;
     if (drag?.pointerId !== event.pointerId) return;
-    const dx = event.clientX - drag.startClientX;
-    const dy = event.clientY - drag.startClientY;
+    const dx = Math.round(event.clientX - drag.startClientX);
+    const dy = Math.round(event.clientY - drag.startClientY);
     if (dx === 0 && dy === 0) return;
     drag.moved = true;
 
@@ -328,21 +515,27 @@ export function CanvasEditor({ bio, links, projects }: CanvasEditorProps) {
       if (!current) return current;
       return current.map((element) => {
         if (element.key !== drag.key) return element;
+        // resizeFromCorner clamps internally (min/max size + bounds), so
+        // only the move branch needs an explicit clampElement pass.
         const next =
           drag.mode === "move"
-            ? {
-                x: Math.round(drag.origin.x + dx),
-                y: Math.round(drag.origin.y + dy),
-                width: drag.origin.width,
-                height: drag.origin.height,
-              }
-            : {
-                x: drag.origin.x,
-                y: drag.origin.y,
-                width: Math.round(drag.origin.width + dx),
-                height: Math.round(drag.origin.height + dy),
-              };
-        return { ...element, ...clampElement(next, boundsRef.current) };
+            ? clampElement(
+                {
+                  x: drag.origin.x + dx,
+                  y: drag.origin.y + dy,
+                  width: drag.origin.width,
+                  height: drag.origin.height,
+                },
+                boundsRef.current,
+              )
+            : resizeFromCorner(
+                drag.origin,
+                drag.corner ?? "bottom-right",
+                dx,
+                dy,
+                boundsRef.current,
+              );
+        return { ...element, ...next };
       });
     });
   }
@@ -352,8 +545,7 @@ export function CanvasEditor({ bio, links, projects }: CanvasEditorProps) {
     if (drag?.pointerId !== event.pointerId) return;
     dragRef.current = null;
     if (drag.moved) {
-      // Most recently moved/resized element comes to the front.
-      bringToFront(drag.key);
+      // Geometry changed; the pointerdown already brought it to front.
       markDirty();
     }
   }
@@ -479,9 +671,112 @@ export function CanvasEditor({ bio, links, projects }: CanvasEditorProps) {
           </div>
         </div>
 
+        {panel ? (
+          <div className="border-line bg-surface mt-4 rounded-lg border p-4">
+            {panel.kind === "TEXT" ? (
+              <TextPanel
+                key={`text-${panel.editKey ?? "new"}`}
+                heading={panel.editKey ? "Edit text" : "Add text"}
+                initialHtml={panel.initialHtml}
+                onCancel={() => setPanel(null)}
+                onSave={(html) => {
+                  if (panel.editKey) {
+                    patchElement(panel.editKey, { textContent: html });
+                  } else {
+                    addElement({ type: "TEXT", textContent: html }, 24, 24);
+                  }
+                  setPanel(null);
+                }}
+              />
+            ) : panel.kind === "IMAGE" ? (
+              <ImagePanel
+                key={`image-${panel.editKey ?? "new"}`}
+                heading={panel.editKey ? "Edit image" : "Add image"}
+                initialImageUrl={panel.initialImageUrl}
+                initialCaption={panel.initialCaption}
+                onCancel={() => setPanel(null)}
+                onSave={(imageUrl, imageCaption) => {
+                  if (panel.editKey) {
+                    patchElement(panel.editKey, {
+                      imageUrl,
+                      imageCaption: imageCaption || null,
+                    });
+                  } else {
+                    addElement(
+                      {
+                        type: "IMAGE",
+                        imageUrl,
+                        ...(imageCaption ? { imageCaption } : {}),
+                      },
+                      24,
+                      24,
+                    );
+                  }
+                  setPanel(null);
+                }}
+              />
+            ) : (
+              <LinkPanel
+                key={`link-${panel.editKey ?? "new"}`}
+                heading={panel.editKey ? "Edit link" : "Add link"}
+                initialLabel={panel.initialLabel}
+                initialUrl={panel.initialUrl}
+                onCancel={() => setPanel(null)}
+                onSave={(linkLabel, linkUrl) => {
+                  if (panel.editKey) {
+                    patchElement(panel.editKey, { linkLabel, linkUrl });
+                  } else {
+                    addElement({ type: "LINK", linkLabel, linkUrl }, 24, 24);
+                  }
+                  setPanel(null);
+                }}
+              />
+            )}
+          </div>
+        ) : null}
+
         <div className="mt-6 flex items-start gap-6">
           <aside className="border-line bg-surface w-64 shrink-0 rounded-lg border p-4">
             <h2 className="text-faint font-mono text-xs tracking-[0.14em] uppercase">
+              Add component
+            </h2>
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              {(
+                [
+                  ["TEXT", "Text"],
+                  ["IMAGE", "Image"],
+                  ["LINK", "Link"],
+                ] as const
+              ).map(([kind, label]) => (
+                <button
+                  key={kind}
+                  type="button"
+                  onClick={() =>
+                    setPanel(
+                      kind === "TEXT"
+                        ? { kind, editKey: null, initialHtml: "" }
+                        : kind === "IMAGE"
+                          ? {
+                              kind,
+                              editKey: null,
+                              initialImageUrl: "",
+                              initialCaption: "",
+                            }
+                          : {
+                              kind,
+                              editKey: null,
+                              initialLabel: "",
+                              initialUrl: "",
+                            },
+                    )
+                  }
+                  className="border-line-strong text-ink hover:bg-raised rounded-md border px-2 py-1.5 text-sm font-medium transition-colors"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <h2 className="text-faint mt-6 font-mono text-xs tracking-[0.14em] uppercase">
               Library
             </h2>
             <p className="text-muted mt-2 text-xs">
@@ -550,7 +845,15 @@ export function CanvasEditor({ bio, links, projects }: CanvasEditorProps) {
             </ul>
           </aside>
 
-          <div className="border-line bg-canvas relative min-w-0 flex-1 overflow-auto rounded-lg border">
+          <div
+            className="border-line bg-canvas relative min-w-0 flex-1 overflow-auto rounded-lg border"
+            // Cap the scroll container at the placeable surface's width (+2
+            // for its own borders, box-sizing: border-box) so the visible
+            // right border sits flush with the surface's right edge on wide
+            // viewports; flex-1/min-w-0 still let it shrink and scroll on
+            // narrow ones.
+            style={{ maxWidth: bounds.width + 2 }}
+          >
             <div
               ref={surfaceRef}
               onDragOver={onSurfaceDragOver}
@@ -565,6 +868,7 @@ export function CanvasEditor({ bio, links, projects }: CanvasEditorProps) {
                   onPointerMove={onDragPointerMove}
                   onPointerUp={onDragPointerEnd}
                   onPointerCancel={onDragPointerEnd}
+                  onContextMenu={(event) => openContextMenu(event, element)}
                   className="border-line-strong bg-surface absolute cursor-move touch-none overflow-hidden rounded-lg border"
                   style={{
                     left: element.x,
@@ -585,31 +889,69 @@ export function CanvasEditor({ bio, links, projects }: CanvasEditorProps) {
                       projectsById={projectsById}
                     />
                   </div>
-                  <button
-                    type="button"
-                    onPointerDown={(event) => event.stopPropagation()}
-                    onClick={() => removeElement(element.key)}
-                    className="text-danger bg-raised/90 absolute top-1.5 right-1.5 z-10 rounded px-2 py-0.5 text-xs font-medium underline-offset-4 hover:underline"
-                  >
-                    Remove
-                  </button>
-                  <div
-                    role="presentation"
-                    onPointerDown={(event) => {
-                      event.stopPropagation();
-                      startDrag(event, element, "resize");
-                    }}
-                    onPointerMove={onDragPointerMove}
-                    onPointerUp={onDragPointerEnd}
-                    onPointerCancel={onDragPointerEnd}
-                    className="border-accent absolute right-0 bottom-0 z-10 h-4 w-4 cursor-se-resize touch-none rounded-tl border-t-2 border-l-2"
-                  />
+                  {RESIZE_HANDLES.map((handle) => (
+                    <div
+                      key={handle.corner}
+                      role="presentation"
+                      onPointerDown={(event) => {
+                        event.stopPropagation();
+                        startDrag(event, element, "resize", handle.corner);
+                      }}
+                      onPointerMove={onDragPointerMove}
+                      onPointerUp={onDragPointerEnd}
+                      onPointerCancel={onDragPointerEnd}
+                      className={`border-accent absolute z-10 h-4 w-4 touch-none ${handle.className}`}
+                    />
+                  ))}
                 </div>
               ))}
             </div>
           </div>
         </div>
       </div>
+
+      {contextMenu
+        ? (() => {
+            const element = elements.find(
+              (item) => item.key === contextMenu.key,
+            );
+            if (!element) return null;
+            return (
+              <div
+                role="menu"
+                // Keep the window pointerdown close-listener from firing so
+                // the menu's own actions receive their click.
+                onPointerDown={(event) => event.stopPropagation()}
+                onContextMenu={(event) => event.preventDefault()}
+                className="border-line-strong bg-surface fixed z-50 w-36 rounded-md border py-1 shadow-lg"
+                style={{ left: contextMenu.x, top: contextMenu.y }}
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setContextMenu(null);
+                    handleEdit(element);
+                  }}
+                  className="text-ink hover:bg-raised block w-full px-3 py-1.5 text-left text-sm transition-colors"
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setContextMenu(null);
+                    removeElement(element.key);
+                  }}
+                  className="text-danger hover:bg-raised block w-full px-3 py-1.5 text-left text-sm transition-colors"
+                >
+                  Delete
+                </button>
+              </div>
+            );
+          })()
+        : null}
     </>
   );
 }
@@ -658,6 +1000,47 @@ function ElementContent({
       </div>
     );
   }
+  if (element.type === "TEXT") {
+    return (
+      <div
+        className="p-4 text-sm leading-6 break-words [&_a]:underline [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5"
+        // Author's own in-editor content (local state, pre-save); the server
+        // sanitizes it against an allowlist before it is ever stored.
+        dangerouslySetInnerHTML={{ __html: element.textContent ?? "" }}
+      />
+    );
+  }
+  if (element.type === "IMAGE") {
+    return (
+      <figure className="relative h-full w-full">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={element.imageUrl ?? ""}
+          alt={element.imageCaption ?? ""}
+          className="h-full w-full object-cover"
+        />
+        {element.imageCaption ? (
+          <figcaption className="bg-surface/85 text-ink absolute inset-x-0 bottom-0 truncate px-3 py-1.5 text-xs">
+            {element.imageCaption}
+          </figcaption>
+        ) : null}
+      </figure>
+    );
+  }
+  if (element.type === "LINK") {
+    const favicon = element.linkUrl ? faviconUrl(element.linkUrl) : null;
+    return (
+      <div className="flex h-full items-center gap-3 p-4">
+        {favicon ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={favicon} alt="" className="h-5 w-5 shrink-0 rounded" />
+        ) : null}
+        <span className="text-ink truncate text-sm font-medium">
+          {element.linkLabel}
+        </span>
+      </div>
+    );
+  }
   const project = element.projectId
     ? projectsById.get(element.projectId)
     : undefined;
@@ -667,5 +1050,308 @@ function ElementContent({
     <p className="text-faint p-4 font-mono text-xs uppercase">
       Project unavailable
     </p>
+  );
+}
+
+const panelInputClass =
+  "border-line-strong bg-canvas text-ink placeholder:text-faint focus:border-accent mt-2 block w-full rounded-md border px-3 py-2 text-sm";
+
+function PanelActions({
+  onCancel,
+  saveLabel,
+  disabled,
+}: {
+  onCancel: () => void;
+  saveLabel: string;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="mt-4 flex items-center gap-3">
+      <button
+        type="submit"
+        disabled={disabled}
+        className="bg-accent text-on-accent hover:bg-accent-strong rounded-md px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-50"
+      >
+        {saveLabel}
+      </button>
+      <button
+        type="button"
+        onClick={onCancel}
+        className="text-muted hover:text-ink text-sm font-medium transition-colors"
+      >
+        Cancel
+      </button>
+    </div>
+  );
+}
+
+function TextPanel({
+  heading,
+  initialHtml,
+  onSave,
+  onCancel,
+}: {
+  heading: string;
+  initialHtml: string;
+  onSave: (html: string) => void;
+  onCancel: () => void;
+}) {
+  const editorRef = useRef<HTMLDivElement | null>(null);
+  const [error, setError] = useState("");
+
+  // document.execCommand is deprecated but has no dependency-free
+  // replacement for a minimal contentEditable toolbar; the server sanitizes
+  // whatever HTML this produces before storing it.
+  function exec(command: string, value?: string) {
+    editorRef.current?.focus();
+    document.execCommand(command, false, value);
+  }
+
+  function insertLink() {
+    const url = window.prompt("Link URL (https://…)");
+    if (!url) return;
+    if (!safeExternalUrl(url)) {
+      setError("Links must be valid http(s) URLs.");
+      return;
+    }
+    setError("");
+    exec("createLink", url);
+  }
+
+  const toolbar: { label: string; title: string; action: () => void }[] = [
+    { label: "B", title: "Bold", action: () => exec("bold") },
+    { label: "I", title: "Italic", action: () => exec("italic") },
+    {
+      label: "• List",
+      title: "Bulleted list",
+      action: () => exec("insertUnorderedList"),
+    },
+    {
+      label: "1. List",
+      title: "Numbered list",
+      action: () => exec("insertOrderedList"),
+    },
+    { label: "Link", title: "Insert link", action: insertLink },
+  ];
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        const editor = editorRef.current;
+        if (!editor?.textContent?.trim()) {
+          setError("Add some text before saving.");
+          return;
+        }
+        onSave(editor.innerHTML);
+      }}
+    >
+      <h3 className="text-faint font-mono text-xs tracking-[0.14em] uppercase">
+        {heading}
+      </h3>
+      <div className="mt-3 flex flex-wrap gap-1">
+        {toolbar.map((button) => (
+          <button
+            key={button.title}
+            type="button"
+            title={button.title}
+            // preventDefault keeps the contentEditable selection intact so
+            // the command applies to the highlighted text.
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={button.action}
+            className="border-line-strong text-ink hover:bg-raised rounded border px-2 py-1 text-xs font-medium transition-colors"
+          >
+            {button.label}
+          </button>
+        ))}
+      </div>
+      <div
+        ref={editorRef}
+        contentEditable
+        suppressContentEditableWarning
+        role="textbox"
+        aria-multiline="true"
+        aria-label="Text content"
+        // The author's own draft HTML (already server-sanitized when it came
+        // from a stored element).
+        dangerouslySetInnerHTML={{ __html: initialHtml }}
+        className="border-line-strong bg-canvas text-ink focus:border-accent mt-2 min-h-32 rounded-md border px-3 py-2 text-sm leading-6 break-words outline-none [&_a]:underline [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5"
+      />
+      {error ? (
+        <p role="alert" className="text-danger mt-2 text-sm">
+          {error}
+        </p>
+      ) : null}
+      <PanelActions onCancel={onCancel} saveLabel="Save text" />
+    </form>
+  );
+}
+
+function ImagePanel({
+  heading,
+  initialImageUrl,
+  initialCaption,
+  onSave,
+  onCancel,
+}: {
+  heading: string;
+  initialImageUrl: string;
+  initialCaption: string;
+  onSave: (imageUrl: string, imageCaption: string) => void;
+  onCancel: () => void;
+}) {
+  const [imageUrl, setImageUrl] = useState(initialImageUrl);
+  const [caption, setCaption] = useState(initialCaption);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function upload(file: File) {
+    setUploading(true);
+    setError("");
+    const body = new FormData();
+    body.set("file", file);
+    try {
+      const response = await fetch("/api/upload", { method: "POST", body });
+      const result = (await response.json()) as {
+        url?: string;
+        error?: string;
+      };
+      if (!response.ok || !result.url)
+        throw new Error(result.error ?? "Upload failed.");
+      setImageUrl(result.url);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Upload failed.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!imageUrl) {
+          setError("Upload an image first.");
+          return;
+        }
+        onSave(imageUrl, caption.trim());
+      }}
+    >
+      <h3 className="text-faint font-mono text-xs tracking-[0.14em] uppercase">
+        {heading}
+      </h3>
+      <label className="border-line-strong text-muted mt-3 block rounded-md border border-dashed p-4 text-sm font-medium">
+        {uploading
+          ? "Uploading…"
+          : imageUrl
+            ? "Replace the image"
+            : "Upload an image"}
+        <input
+          type="file"
+          accept="image/*"
+          disabled={uploading}
+          className="text-muted file:bg-raised file:text-ink mt-2 block w-full text-sm file:mr-3 file:rounded-md file:border-0 file:px-3 file:py-1.5 file:text-sm file:font-medium"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) void upload(file);
+            event.target.value = "";
+          }}
+        />
+      </label>
+      {imageUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={imageUrl}
+          alt=""
+          className="bg-raised mt-3 max-h-40 rounded-md object-contain"
+        />
+      ) : null}
+      <label className="text-ink mt-3 block text-sm font-medium">
+        Caption <span className="text-faint font-normal">(optional)</span>
+        <input
+          value={caption}
+          maxLength={300}
+          onChange={(event) => setCaption(event.target.value)}
+          className={panelInputClass}
+        />
+      </label>
+      {error ? (
+        <p role="alert" className="text-danger mt-2 text-sm break-words">
+          {error}
+        </p>
+      ) : null}
+      <PanelActions
+        onCancel={onCancel}
+        saveLabel="Save image"
+        disabled={uploading}
+      />
+    </form>
+  );
+}
+
+function LinkPanel({
+  heading,
+  initialLabel,
+  initialUrl,
+  onSave,
+  onCancel,
+}: {
+  heading: string;
+  initialLabel: string;
+  initialUrl: string;
+  onSave: (linkLabel: string, linkUrl: string) => void;
+  onCancel: () => void;
+}) {
+  const [label, setLabel] = useState(initialLabel);
+  const [url, setUrl] = useState(initialUrl);
+  const [error, setError] = useState("");
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        const trimmedLabel = label.trim();
+        const safeUrl = safeExternalUrl(url.trim());
+        if (!trimmedLabel) {
+          setError("Add a label for the link.");
+          return;
+        }
+        if (!safeUrl) {
+          setError("Enter a valid http(s) URL.");
+          return;
+        }
+        onSave(trimmedLabel, safeUrl);
+      }}
+    >
+      <h3 className="text-faint font-mono text-xs tracking-[0.14em] uppercase">
+        {heading}
+      </h3>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <label className="text-ink block text-sm font-medium">
+          Label
+          <input
+            value={label}
+            maxLength={160}
+            onChange={(event) => setLabel(event.target.value)}
+            className={panelInputClass}
+          />
+        </label>
+        <label className="text-ink block text-sm font-medium">
+          URL
+          <input
+            value={url}
+            placeholder="https://example.com"
+            onChange={(event) => setUrl(event.target.value)}
+            className={panelInputClass}
+          />
+        </label>
+      </div>
+      {error ? (
+        <p role="alert" className="text-danger mt-2 text-sm">
+          {error}
+        </p>
+      ) : null}
+      <PanelActions onCancel={onCancel} saveLabel="Save link" />
+    </form>
   );
 }

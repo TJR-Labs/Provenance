@@ -44,6 +44,9 @@ enum CanvasElementType {
   ABOUT
   LINKS
   PROJECT
+  TEXT
+  IMAGE
+  LINK
 }
 
 enum CanvasElementState {
@@ -144,18 +147,23 @@ model Project {
 }
 
 model CanvasElement {
-  id        String             @id @default(cuid())
-  userId    String
-  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  state     CanvasElementState
-  type      CanvasElementType
-  projectId String?
-  project   Project?           @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  x         Int
-  y         Int
-  width     Int
-  height    Int
-  zIndex    Int
+  id           String             @id @default(cuid())
+  userId       String
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  state        CanvasElementState
+  type         CanvasElementType
+  projectId    String?
+  project      Project?           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  x            Int
+  y            Int
+  width        Int
+  height       Int
+  zIndex       Int
+  textContent  String?
+  imageUrl     String?
+  imageCaption String?
+  linkLabel    String?
+  linkUrl      String?
 
   @@index([userId, state])
 }

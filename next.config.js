@@ -34,7 +34,12 @@ const config = {
           {
             key: "Content-Security-Policy",
             value:
-              "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+              // img-src allows www.google.com and *.gstatic.com: the canvas
+              // Link element's third-party favicon-by-domain lookup
+              // (s2/favicons) redirects to a gstatic.com host to serve the
+              // actual icon — see specs/canvas-editor-refinements.md
+              // requirement 7.
+              "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://www.google.com https://*.gstatic.com; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
           },
         ],
       },

@@ -1,3 +1,4 @@
+import sanitizeHtml from "sanitize-html";
 import type {
   CanvasElementState,
   Prisma,
@@ -5,6 +6,7 @@ import type {
 } from "../../generated/prisma";
 import { z } from "zod";
 
+import { safeExternalUrl } from "~/app/safe-external-url";
 import {
   CANVAS_MAX_HEIGHT,
   CANVAS_MIN_HEIGHT,
@@ -13,10 +15,38 @@ import {
 } from "~/lib/canvas-constants";
 import { db } from "~/server/db";
 
+// Allowlist for user-authored rich text (Text elements): formatting and
+// links only — no scripts, iframes, images, or arbitrary attributes.
+// `allowedSchemes` strips an `href` outright (keeping the link's text) when
+// its scheme isn't http/https, so javascript:/data: links can't survive.
+export function sanitizeCanvasText(html: string): string {
+  return sanitizeHtml(html, {
+    allowedTags: [
+      "p",
+      "br",
+      "b",
+      "strong",
+      "i",
+      "em",
+      "ul",
+      "ol",
+      "li",
+      "a",
+    ],
+    allowedAttributes: { a: ["href"] },
+    allowedSchemes: ["http", "https"],
+  });
+}
+
 export const canvasElementInputSchema = z
   .object({
-    type: z.enum(["ABOUT", "LINKS", "PROJECT"]),
+    type: z.enum(["ABOUT", "LINKS", "PROJECT", "TEXT", "IMAGE", "LINK"]),
     projectId: z.string().min(1).optional(),
+    textContent: z.string().min(1).optional(),
+    imageUrl: z.string().min(1).optional(),
+    imageCaption: z.string().optional(),
+    linkLabel: z.string().min(1).optional(),
+    linkUrl: z.string().min(1).optional(),
     x: z.number().int(),
     y: z.number().int(),
     width: z.number().int(),
@@ -36,6 +66,60 @@ export const canvasElementInputSchema = z
         code: z.ZodIssueCode.custom,
         message: "projectId is only valid for project elements.",
         path: ["projectId"],
+      });
+    }
+
+    if (element.type === "TEXT" && !element.textContent) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "textContent is required for text elements.",
+        path: ["textContent"],
+      });
+    }
+    if (element.type !== "TEXT" && element.textContent) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "textContent is only valid for text elements.",
+        path: ["textContent"],
+      });
+    }
+
+    if (element.type === "IMAGE" && !element.imageUrl) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "imageUrl is required for image elements.",
+        path: ["imageUrl"],
+      });
+    }
+    if (element.type !== "IMAGE" && (element.imageUrl ?? element.imageCaption)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "imageUrl/imageCaption are only valid for image elements.",
+        path: ["imageUrl"],
+      });
+    }
+
+    if (element.type === "LINK") {
+      if (!element.linkLabel) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "linkLabel is required for link elements.",
+          path: ["linkLabel"],
+        });
+      }
+      if (!element.linkUrl || !safeExternalUrl(element.linkUrl)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "linkUrl must be a valid http(s) URL.",
+          path: ["linkUrl"],
+        });
+      }
+    }
+    if (element.type !== "LINK" && (element.linkLabel ?? element.linkUrl)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "linkLabel/linkUrl are only valid for link elements.",
+        path: ["linkLabel"],
       });
     }
   });
@@ -93,6 +177,9 @@ function clampElements(elements: CanvasElementInput[]) {
       height,
       x: clamp(element.x, 0, CANVAS_WIDTH - width),
       y: clamp(element.y, 0, CANVAS_MAX_HEIGHT - height),
+      ...(element.type === "TEXT" && element.textContent
+        ? { textContent: sanitizeCanvasText(element.textContent) }
+        : {}),
     };
   });
 }
@@ -112,6 +199,12 @@ function createRows(
     width: element.width,
     height: element.height,
     zIndex: element.zIndex,
+    textContent: element.type === "TEXT" ? (element.textContent ?? null) : null,
+    imageUrl: element.type === "IMAGE" ? (element.imageUrl ?? null) : null,
+    imageCaption:
+      element.type === "IMAGE" ? (element.imageCaption ?? null) : null,
+    linkLabel: element.type === "LINK" ? (element.linkLabel ?? null) : null,
+    linkUrl: element.type === "LINK" ? (element.linkUrl ?? null) : null,
   }));
 }
 

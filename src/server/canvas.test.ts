@@ -3,9 +3,11 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("~/server/db", () => ({ db: {} }));
 
 import {
+  canvasElementInputSchema,
   CanvasOwnershipError,
   getCanvasEditorState,
   publishCanvasLayout,
+  sanitizeCanvasText,
   saveCanvasDraft,
   setLayoutMode,
   type CanvasElementInput,
@@ -477,5 +479,160 @@ describe("public profile canvas data", () => {
 
     expect(canvasElements.findMany).not.toHaveBeenCalled();
     expect(profile?.canvasElements).toEqual([]);
+  });
+});
+
+describe("sanitizeCanvasText", () => {
+  it("strips script tags but keeps allowed formatting", () => {
+    const dirty = '<p>Hello <script>alert(1)</script><b>world</b></p>';
+    expect(sanitizeCanvasText(dirty)).toBe("<p>Hello <b>world</b></p>");
+  });
+
+  it("strips iframes", () => {
+    expect(sanitizeCanvasText('<iframe src="evil.com"></iframe>text')).toBe(
+      "text",
+    );
+  });
+
+  it("drops unsafe javascript: hrefs but keeps the link text", () => {
+    expect(
+      sanitizeCanvasText('<a href="javascript:alert(1)">click</a>'),
+    ).toBe("<a>click</a>");
+  });
+
+  it("keeps safe http(s) hrefs", () => {
+    expect(sanitizeCanvasText('<a href="https://example.com">link</a>')).toBe(
+      '<a href="https://example.com">link</a>',
+    );
+  });
+});
+
+describe("canvasElementInputSchema — LINK elements", () => {
+  const base = { x: 0, y: 0, width: 200, height: 80, zIndex: 1 };
+
+  it("rejects a javascript: url", () => {
+    const result = canvasElementInputSchema.safeParse({
+      ...base,
+      type: "LINK",
+      linkLabel: "My site",
+      linkUrl: "javascript:alert(1)",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects an empty url", () => {
+    const result = canvasElementInputSchema.safeParse({
+      ...base,
+      type: "LINK",
+      linkLabel: "My site",
+      linkUrl: "",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts a valid https url", () => {
+    const result = canvasElementInputSchema.safeParse({
+      ...base,
+      type: "LINK",
+      linkLabel: "My site",
+      linkUrl: "https://example.com",
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
+describe("no cap on TEXT/IMAGE/LINK elements", () => {
+  it("allows multiple TEXT elements in one draft save", async () => {
+    const fixture = createMockDatabase();
+
+    const textElement = (zIndex: number): CanvasElementInput => ({
+      type: "TEXT",
+      textContent: `<p>Note ${zIndex}</p>`,
+      x: 0,
+      y: zIndex * 100,
+      width: 200,
+      height: 80,
+      zIndex,
+    });
+
+    await saveCanvasDraft(
+      "user-1",
+      [textElement(1), textElement(2), textElement(3)],
+      fixture.database,
+    );
+
+    expect(fixture.rows()).toHaveLength(3);
+    expect(fixture.rows().every((row) => row.type === "TEXT")).toBe(true);
+  });
+
+  it("allows several TEXT, IMAGE, and LINK elements to coexist in one draft save", async () => {
+    const fixture = createMockDatabase();
+
+    const elements: CanvasElementInput[] = [
+      {
+        type: "TEXT",
+        textContent: "<p>First note</p>",
+        x: 0,
+        y: 0,
+        width: 200,
+        height: 80,
+        zIndex: 1,
+      },
+      {
+        type: "TEXT",
+        textContent: "<p>Second note</p>",
+        x: 0,
+        y: 100,
+        width: 200,
+        height: 80,
+        zIndex: 2,
+      },
+      {
+        type: "IMAGE",
+        imageUrl: "https://example.com/one.png",
+        x: 0,
+        y: 200,
+        width: 200,
+        height: 80,
+        zIndex: 3,
+      },
+      {
+        type: "IMAGE",
+        imageUrl: "https://example.com/two.png",
+        x: 0,
+        y: 300,
+        width: 200,
+        height: 80,
+        zIndex: 4,
+      },
+      {
+        type: "LINK",
+        linkLabel: "Site one",
+        linkUrl: "https://example.com/one",
+        x: 0,
+        y: 400,
+        width: 200,
+        height: 80,
+        zIndex: 5,
+      },
+      {
+        type: "LINK",
+        linkLabel: "Site two",
+        linkUrl: "https://example.com/two",
+        x: 0,
+        y: 500,
+        width: 200,
+        height: 80,
+        zIndex: 6,
+      },
+    ];
+
+    await saveCanvasDraft("user-1", elements, fixture.database);
+
+    const rows = fixture.rows();
+    expect(rows).toHaveLength(6);
+    expect(rows.filter((row) => row.type === "TEXT")).toHaveLength(2);
+    expect(rows.filter((row) => row.type === "IMAGE")).toHaveLength(2);
+    expect(rows.filter((row) => row.type === "LINK")).toHaveLength(2);
   });
 });
