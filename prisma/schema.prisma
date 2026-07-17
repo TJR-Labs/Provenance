@@ -55,30 +55,31 @@ enum CanvasElementState {
 }
 
 model User {
-  id                 String            @id @default(cuid())
-  username           String            @unique
-  passwordHash       String?
-  email              String?           @unique
-  role               Role              @default(USER)
-  displayName        String
-  bio                String?
-  school             String?
-  avatarUrl          String?
-  links              Json?
-  theme              String            @default("default")
-  layoutSections     Json?
-  layoutMode         LayoutMode        @default(GRID)
-  canvasDraftSavedAt DateTime?
-  canvasPublishedAt  DateTime?
-  customCss          String?
-  banned             Boolean           @default(false)
-  createdAt          DateTime          @default(now())
-  projects           Project[]
-  reportsMade        Report[]          @relation("ReportsMade")
-  reportsAgainst     Report[]          @relation("ReportsAgainstUser")
-  accounts           Account[]
-  oauthLinkIntents   OAuthLinkIntent[]
-  canvasElements     CanvasElement[]
+  id                    String            @id @default(cuid())
+  username              String            @unique
+  passwordHash          String?
+  email                 String?           @unique
+  role                  Role              @default(USER)
+  displayName           String
+  bio                   String?
+  school                String?
+  avatarUrl             String?
+  links                 Json?
+  theme                 String            @default("default")
+  layoutSections        Json?
+  layoutMode            LayoutMode        @default(GRID)
+  canvasDraftSavedAt    DateTime?
+  canvasPublishedAt     DateTime?
+  canvasHintDismissedAt DateTime?
+  customCss             String?
+  banned                Boolean           @default(false)
+  createdAt             DateTime          @default(now())
+  projects              Project[]
+  reportsMade           Report[]          @relation("ReportsMade")
+  reportsAgainst        Report[]          @relation("ReportsAgainstUser")
+  accounts              Account[]
+  oauthLinkIntents      OAuthLinkIntent[]
+  canvasElements        CanvasElement[]
 }
 
 model Account {

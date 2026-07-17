@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import {
   CanvasOwnershipError,
+  dismissCanvasHint,
   getCanvasEditorState,
   publishCanvasLayout,
   saveCanvasDraft,
@@ -27,6 +28,10 @@ export const canvasRouter = createTRPCRouter({
 
   getEditorState: protectedProcedure.query(({ ctx }) =>
     getCanvasEditorState(ctx.session.user.id),
+  ),
+
+  dismissHint: protectedProcedure.mutation(({ ctx }) =>
+    dismissCanvasHint(ctx.session.user.id),
   ),
 
   saveDraft: protectedProcedure

@@ -193,6 +193,7 @@ export function CanvasEditor({ bio, links, projects }: CanvasEditorProps) {
   });
   const saveDraft = api.canvas.saveDraft.useMutation();
   const publish = api.canvas.publish.useMutation();
+  const dismissHint = api.canvas.dismissHint.useMutation();
 
   // Local in-editor state is the source of truth once loaded; the server is
   // only consulted for the initial snapshot and for clamp reconciliation.
@@ -204,6 +205,9 @@ export function CanvasEditor({ bio, links, projects }: CanvasEditorProps) {
   // opening a new one replaces the previous.
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [panel, setPanel] = useState<PanelState | null>(null);
+  // Optimistic local dismissal of the first-run hint; the server persists it
+  // via dismissHint so it stays gone across devices.
+  const [hintHidden, setHintHidden] = useState(false);
 
   const elementsRef = useRef<EditorElement[] | null>(null);
   elementsRef.current = elements;
@@ -212,6 +216,10 @@ export function CanvasEditor({ bio, links, projects }: CanvasEditorProps) {
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const keyCounter = useRef(0);
+  // The "⋯" button that opened the current context menu (null when the menu
+  // was opened by right-click), so Escape can restore focus to it.
+  const menuTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   const bounds = editorState.data?.bounds ?? FALLBACK_BOUNDS;
   const boundsRef = useRef(bounds);
@@ -320,7 +328,12 @@ export function CanvasEditor({ bio, links, projects }: CanvasEditorProps) {
     if (!contextMenu) return;
     const onPointerDown = () => setContextMenu(null);
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setContextMenu(null);
+      if (event.key === "Escape") {
+        setContextMenu(null);
+        // Keyboard-opened menus return focus to the "⋯" button that opened
+        // them; right-click opens have no trigger to restore (ref is null).
+        menuTriggerRef.current?.focus();
+      }
     };
     window.addEventListener("pointerdown", onPointerDown);
     window.addEventListener("keydown", onKeyDown);
@@ -429,6 +442,16 @@ export function CanvasEditor({ bio, links, projects }: CanvasEditorProps) {
     markDirty();
   }
 
+  // When the menu was opened from an element's "⋯" button, move focus onto
+  // its first item so Tab reaches Edit/Delete instead of the rest of the
+  // page. Right-click opens leave focus untouched (existing behavior).
+  useEffect(() => {
+    if (!contextMenu || !menuTriggerRef.current) return;
+    menuRef.current
+      ?.querySelector<HTMLButtonElement>('[role="menuitem"]')
+      ?.focus();
+  }, [contextMenu]);
+
   function openContextMenu(
     event: React.MouseEvent<HTMLElement>,
     element: EditorElement,
@@ -436,7 +459,28 @@ export function CanvasEditor({ bio, links, projects }: CanvasEditorProps) {
     event.preventDefault();
     // Ignore right-clicks while a pointer-captured drag is in progress.
     if (dragRef.current) return;
+    menuTriggerRef.current = null;
     setContextMenu({ key: element.key, x: event.clientX, y: event.clientY });
+  }
+
+  // Second entry point to the same menu: the element's "⋯" button. Uses the
+  // button's own rect for position so keyboard activation (Enter/Space)
+  // places the menu correctly with no mouse coordinates involved.
+  function openMenuFromButton(
+    event: React.MouseEvent<HTMLButtonElement>,
+    element: EditorElement,
+  ) {
+    if (dragRef.current) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    menuTriggerRef.current = event.currentTarget;
+    setContextMenu({ key: element.key, x: rect.left, y: rect.bottom + 4 });
+  }
+
+  function dismissHintNow() {
+    // Hide immediately; if the mutation fails we keep it hidden this session
+    // (the server will simply show it again on a future visit).
+    setHintHidden(true);
+    dismissHint.mutate();
   }
 
   function handleEdit(element: EditorElement) {
@@ -626,6 +670,13 @@ export function CanvasEditor({ bio, links, projects }: CanvasEditorProps) {
       ? "Autosave failed — changes retry on your next edit."
       : "Draft autosaves every 30 seconds.";
 
+  // Dismissal and having placed at least one element are each independently
+  // sufficient to suppress the first-run hint.
+  const showHint =
+    !hintHidden &&
+    (editorState.data?.shouldShowHint ?? false) &&
+    elements.length === 0;
+
   return (
     <>
       <div className="border-line bg-surface mt-8 rounded-lg border p-6 md:hidden">
@@ -646,11 +697,17 @@ export function CanvasEditor({ bio, links, projects }: CanvasEditorProps) {
 
       <div className="hidden md:block">
         <div className="mt-8 flex flex-wrap items-center justify-between gap-4">
-          <p
-            className={`text-sm ${saveDraft.isError ? "text-danger" : "text-muted"}`}
-          >
-            {autosaveStatus}
-          </p>
+          <div>
+            <p
+              className={`text-sm ${saveDraft.isError ? "text-danger" : "text-muted"}`}
+            >
+              {autosaveStatus}
+            </p>
+            <p className="text-faint mt-1 text-xs">
+              Autosave keeps a private draft; “Save Layout” publishes your
+              canvas to your public profile.
+            </p>
+          </div>
           <div className="flex items-center gap-3">
             {publishStatus === "error" ? (
               <p role="alert" className="text-danger text-sm">
@@ -671,8 +728,72 @@ export function CanvasEditor({ bio, links, projects }: CanvasEditorProps) {
           </div>
         </div>
 
-        {panel ? (
-          <div className="border-line bg-surface mt-4 rounded-lg border p-4">
+        {showHint ? (
+          <div className="border-line bg-surface mt-4 flex items-start justify-between gap-4 rounded-lg border p-4">
+            <p className="text-muted text-sm">
+              <span className="text-ink font-medium">New to the canvas?</span>{" "}
+              Drag items from the Library onto the canvas to place them. Click
+              an element to bring it to the front, drag a corner to resize it,
+              and use its ⋯ button (or right-click) to edit or delete it.
+            </p>
+            <button
+              type="button"
+              onClick={dismissHintNow}
+              className="border-line-strong text-ink hover:bg-raised shrink-0 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors"
+            >
+              Got it
+            </button>
+          </div>
+        ) : null}
+      </div>
+
+      {/* Add Component works at every viewport width: mobile users can create
+          Text/Image/Link elements (placed via the default position and
+          clamping) even though arranging the canvas remains desktop-only. */}
+      <div className="border-line bg-surface mt-6 rounded-lg border p-4">
+        <h2 className="text-faint font-mono text-xs tracking-[0.14em] uppercase">
+          Add component
+        </h2>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {(
+            [
+              ["TEXT", "Text"],
+              ["IMAGE", "Image"],
+              ["LINK", "Link"],
+            ] as const
+          ).map(([kind, label]) => (
+            <button
+              key={kind}
+              type="button"
+              onClick={() =>
+                setPanel(
+                  kind === "TEXT"
+                    ? { kind, editKey: null, initialHtml: "" }
+                    : kind === "IMAGE"
+                      ? {
+                          kind,
+                          editKey: null,
+                          initialImageUrl: "",
+                          initialCaption: "",
+                        }
+                      : {
+                          kind,
+                          editKey: null,
+                          initialLabel: "",
+                          initialUrl: "",
+                        },
+                )
+              }
+              className="border-line-strong text-ink hover:bg-raised rounded-md border px-3 py-1.5 text-sm font-medium transition-colors"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {panel ? (
+        <div className="border-line bg-surface mt-4 rounded-lg border p-4">
             {panel.kind === "TEXT" ? (
               <TextPanel
                 key={`text-${panel.editKey ?? "new"}`}
@@ -735,48 +856,10 @@ export function CanvasEditor({ bio, links, projects }: CanvasEditorProps) {
           </div>
         ) : null}
 
+      <div className="hidden md:block">
         <div className="mt-6 flex items-start gap-6">
           <aside className="border-line bg-surface w-64 shrink-0 rounded-lg border p-4">
             <h2 className="text-faint font-mono text-xs tracking-[0.14em] uppercase">
-              Add component
-            </h2>
-            <div className="mt-3 grid grid-cols-3 gap-2">
-              {(
-                [
-                  ["TEXT", "Text"],
-                  ["IMAGE", "Image"],
-                  ["LINK", "Link"],
-                ] as const
-              ).map(([kind, label]) => (
-                <button
-                  key={kind}
-                  type="button"
-                  onClick={() =>
-                    setPanel(
-                      kind === "TEXT"
-                        ? { kind, editKey: null, initialHtml: "" }
-                        : kind === "IMAGE"
-                          ? {
-                              kind,
-                              editKey: null,
-                              initialImageUrl: "",
-                              initialCaption: "",
-                            }
-                          : {
-                              kind,
-                              editKey: null,
-                              initialLabel: "",
-                              initialUrl: "",
-                            },
-                    )
-                  }
-                  className="border-line-strong text-ink hover:bg-raised rounded-md border px-2 py-1.5 text-sm font-medium transition-colors"
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            <h2 className="text-faint mt-6 font-mono text-xs tracking-[0.14em] uppercase">
               Library
             </h2>
             <p className="text-muted mt-2 text-xs">
@@ -869,7 +952,7 @@ export function CanvasEditor({ bio, links, projects }: CanvasEditorProps) {
                   onPointerUp={onDragPointerEnd}
                   onPointerCancel={onDragPointerEnd}
                   onContextMenu={(event) => openContextMenu(event, element)}
-                  className="border-line-strong bg-surface absolute cursor-move touch-none overflow-hidden rounded-lg border"
+                  className="group border-line-strong bg-surface absolute cursor-move touch-none overflow-hidden rounded-lg border"
                   style={{
                     left: element.x,
                     top: element.y,
@@ -889,6 +972,21 @@ export function CanvasEditor({ bio, links, projects }: CanvasEditorProps) {
                       projectsById={projectsById}
                     />
                   </div>
+                  {/* Visible entry point to the same Edit/Delete menu that
+                      right-click opens. Sits inset from the top-right corner
+                      so it never overlaps the resize handles' hit areas.
+                      Hidden until hover/focus on fine pointers; always
+                      visible on touch, where hover does not exist. */}
+                  <button
+                    type="button"
+                    aria-haspopup="menu"
+                    aria-label={`Open menu for ${elementLabels[element.type]}`}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => openMenuFromButton(event, element)}
+                    className="border-line-strong bg-surface/90 text-muted hover:text-ink absolute top-1 right-6 z-20 flex h-6 w-6 items-center justify-center rounded-md border text-sm leading-none opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100 [@media(pointer:coarse)]:opacity-100"
+                  >
+                    ⋯
+                  </button>
                   {RESIZE_HANDLES.map((handle) => (
                     <div
                       key={handle.corner}
@@ -918,6 +1016,7 @@ export function CanvasEditor({ bio, links, projects }: CanvasEditorProps) {
             if (!element) return null;
             return (
               <div
+                ref={menuRef}
                 role="menu"
                 // Keep the window pointerdown close-listener from firing so
                 // the menu's own actions receive their click.

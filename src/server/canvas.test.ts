@@ -5,6 +5,7 @@ vi.mock("~/server/db", () => ({ db: {} }));
 import {
   canvasElementInputSchema,
   CanvasOwnershipError,
+  dismissCanvasHint,
   getCanvasEditorState,
   publishCanvasLayout,
   sanitizeCanvasText,
@@ -61,11 +62,13 @@ function createMockDatabase({
   projects = [],
   draftSavedAt = null,
   publishedAt = null,
+  hintDismissedAt = null,
 }: {
   initialElements?: StoredElement[];
   projects?: ProjectFixture[];
   draftSavedAt?: Date | null;
   publishedAt?: Date | null;
+  hintDismissedAt?: Date | null;
 } = {}) {
   let elements = initialElements.map((element) => ({ ...element }));
   let projectItems = projects.map((project) => ({ ...project }));
@@ -74,6 +77,7 @@ function createMockDatabase({
     layoutMode: "GRID" as "GRID" | "CANVAS",
     canvasDraftSavedAt: draftSavedAt,
     canvasPublishedAt: publishedAt,
+    canvasHintDismissedAt: hintDismissedAt,
   };
 
   const canvasElement = {
@@ -375,6 +379,45 @@ describe("portfolio canvas", () => {
     expect(editor.elements).toHaveLength(1);
     expect(editor.elements[0]).toMatchObject(current);
     expect(editor.elements[0]?.state).toBe("PUBLISHED");
+  });
+
+  it("shows the hint only when undismissed and no elements are placed", async () => {
+    const fresh = createMockDatabase();
+    expect((await getCanvasEditorState("user-1", fresh.database)).shouldShowHint).toBe(
+      true,
+    );
+
+    const dismissed = createMockDatabase({
+      hintDismissedAt: new Date("2026-07-16T12:00:00Z"),
+    });
+    expect(
+      (await getCanvasEditorState("user-1", dismissed.database)).shouldShowHint,
+    ).toBe(false);
+
+    const withElement = createMockDatabase({
+      initialElements: [
+        storedElement(
+          { type: "ABOUT", x: 0, y: 0, width: 300, height: 200, zIndex: 1 },
+          "DRAFT",
+          "about",
+        ),
+      ],
+      draftSavedAt: new Date("2026-07-16T12:00:00Z"),
+    });
+    expect(
+      (await getCanvasEditorState("user-1", withElement.database)).shouldShowHint,
+    ).toBe(false);
+  });
+
+  it("dismissCanvasHint persists the dismissal so the hint stays suppressed", async () => {
+    const fixture = createMockDatabase();
+
+    await dismissCanvasHint("user-1", fixture.database);
+
+    expect(fixture.user.canvasHintDismissedAt).toBeInstanceOf(Date);
+    expect(
+      (await getCanvasEditorState("user-1", fixture.database)).shouldShowHint,
+    ).toBe(false);
   });
 
   it("removes a deleted project's canvas placement with no dangling reference", async () => {

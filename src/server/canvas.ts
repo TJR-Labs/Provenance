@@ -314,6 +314,7 @@ export async function getCanvasEditorState(
       layoutMode: true,
       canvasDraftSavedAt: true,
       canvasPublishedAt: true,
+      canvasHintDismissedAt: true,
     },
   });
   const hasNewerDraft =
@@ -355,6 +356,8 @@ export async function getCanvasEditorState(
 
   return {
     mode: user.layoutMode,
+    shouldShowHint:
+      user.canvasHintDismissedAt === null && elements.length === 0,
     bounds: {
       width: CANVAS_WIDTH,
       maxHeight: CANVAS_MAX_HEIGHT,
@@ -374,6 +377,17 @@ export async function getCanvasEditorState(
       })),
     ],
   };
+}
+
+export async function dismissCanvasHint(
+  userId: string,
+  database: PrismaClient = db,
+) {
+  return database.user.update({
+    where: { id: userId },
+    data: { canvasHintDismissedAt: new Date() },
+    select: { canvasHintDismissedAt: true },
+  });
 }
 
 export async function saveCanvasDraft(
