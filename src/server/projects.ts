@@ -163,6 +163,31 @@ export function discoverProjects(
   });
 }
 
+// Surfaces the hashtags actually in use across public (non-banned) profiles,
+// ordered by usage frequency (most-used first) so the Discover page can offer
+// them as filter chips. Reuses Project.hashtags as-is — no separate tag table.
+// The frequency count runs in memory over the selected arrays, which is
+// sufficient at this scale; ties fall back to alphabetical for stable output.
+export async function listPopularHashtags(
+  limit = 20,
+  projects: ProjectDelegate = db.project,
+) {
+  const rows = await projects.findMany({
+    where: { user: { banned: false } },
+    select: { hashtags: true },
+  });
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    for (const tag of row.hashtags) {
+      counts.set(tag, (counts.get(tag) ?? 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, limit)
+    .map(([tag]) => tag);
+}
+
 // Lists the signed-in user's own projects for the "My Work" hub, with
 // placed/unplaced-on-canvas status mirroring the canvas editor's Library
 // sidebar (src/server/canvas.ts's getCanvasEditorState resolves the same

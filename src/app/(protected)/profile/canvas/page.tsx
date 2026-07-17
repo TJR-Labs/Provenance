@@ -30,11 +30,11 @@ export default async function CanvasEditorPage() {
           Canvas layout
         </h1>
         <p className="text-muted mt-4">
-          Your profile is currently using the grid layout. Switch the layout
-          mode to Canvas from your profile settings first.
+          Your profile is currently using the grid layout. Switch to the canvas
+          layout from your profile settings first.
         </p>
         <Link
-          href="/profile/edit"
+          href="/profile/edit#layout-mode"
           className="text-accent hover:text-accent-strong mt-4 inline-block text-sm font-semibold transition-colors"
         >
           Go to profile settings →

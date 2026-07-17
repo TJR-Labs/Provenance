@@ -2,7 +2,7 @@ import { Category } from "../../../../generated/prisma";
 import { z } from "zod";
 
 import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
-import { discoverProjects } from "~/server/projects";
+import { discoverProjects, listPopularHashtags } from "~/server/projects";
 
 export const discoveryRouter = createTRPCRouter({
   list: publicProcedure
@@ -13,4 +13,7 @@ export const discoveryRouter = createTRPCRouter({
       }),
     )
     .query(({ ctx, input }) => discoverProjects(input, ctx.db.project)),
+  popularHashtags: publicProcedure.query(({ ctx }) =>
+    listPopularHashtags(20, ctx.db.project),
+  ),
 });

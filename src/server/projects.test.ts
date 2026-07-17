@@ -2,7 +2,50 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("~/server/db", () => ({ db: {} }));
 
-import { listMyProjects } from "~/server/projects";
+import { listMyProjects, listPopularHashtags } from "~/server/projects";
+
+describe("listPopularHashtags", () => {
+  it("orders tags by usage frequency, most-used first", async () => {
+    const projects = {
+      findMany: vi.fn().mockResolvedValue([
+        { hashtags: ["robotics", "ai"] },
+        { hashtags: ["robotics", "web"] },
+        { hashtags: ["robotics", "ai"] },
+        { hashtags: ["web"] },
+      ]),
+    };
+
+    const result = await listPopularHashtags(20, projects as never);
+
+    // robotics=3, ai=2, web=2; ties (ai/web) fall back to alphabetical.
+    expect(result).toEqual(["robotics", "ai", "web"]);
+    // Only public (non-banned) projects are counted.
+    expect(projects.findMany).toHaveBeenCalledWith({
+      where: { user: { banned: false } },
+      select: { hashtags: true },
+    });
+  });
+
+  it("caps the result at the requested limit", async () => {
+    const projects = {
+      findMany: vi.fn().mockResolvedValue([
+        { hashtags: ["a", "b", "c", "d"] },
+      ]),
+    };
+
+    const result = await listPopularHashtags(2, projects as never);
+
+    expect(result).toHaveLength(2);
+  });
+
+  it("returns an empty list when no projects have hashtags", async () => {
+    const projects = {
+      findMany: vi.fn().mockResolvedValue([{ hashtags: [] }, { hashtags: [] }]),
+    };
+
+    expect(await listPopularHashtags(20, projects as never)).toEqual([]);
+  });
+});
 
 describe("listMyProjects", () => {
   it("lists the user's own projects newest-first with thumbnail and placed status", async () => {

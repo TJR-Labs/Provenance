@@ -447,10 +447,13 @@ export function ProfileForm({
       </fieldset>
 
       <fieldset id="layout-mode">
-        <legend className="text-ink text-sm font-medium">Layout mode</legend>
+        <legend className="text-ink text-sm font-medium">
+          How your profile is arranged
+        </legend>
         <p className="text-muted mt-1 text-sm">
-          Grid uses the classic sections above. Canvas lets you freely arrange
-          your profile. Changes apply immediately.
+          Grid stacks your sections (About, Projects, Links) in the order above.
+          Canvas lets you freely place and resize elements. Changes apply
+          immediately.
         </p>
         <div className="mt-3 flex gap-2">
           {(["GRID", "CANVAS"] as const).map((mode) => (
@@ -471,11 +474,11 @@ export function ProfileForm({
           ))}
         </div>
         {setMode.isPending ? (
-          <p className="text-muted mt-2 text-sm">Switching layout mode…</p>
+          <p className="text-muted mt-2 text-sm">Switching layout…</p>
         ) : null}
         {setMode.isError ? (
           <p role="alert" className="text-danger mt-2 text-sm">
-            Could not switch layout mode. Please try again.
+            Could not switch layout. Please try again.
           </p>
         ) : null}
         {layoutMode === "CANVAS" ? (

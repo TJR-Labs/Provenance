@@ -654,10 +654,10 @@ export function CanvasEditor({ bio, links, projects }: CanvasEditorProps) {
       <p className="text-muted mt-8">
         This profile is using the grid layout.{" "}
         <Link
-          href="/profile/edit"
+          href="/profile/edit#layout-mode"
           className="text-accent hover:text-accent-strong font-semibold transition-colors"
         >
-          Switch to canvas mode
+          Switch to the canvas layout
         </Link>{" "}
         to arrange it here.
       </p>

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { getServerCaller } from "~/server/api/caller";
 import { signIn } from "~/server/auth";
 import { OAuthButtons } from "../oauth-buttons";
+import { PasswordField } from "./password-field";
 
 type SignupPageProps = {
   searchParams: Promise<{ error?: string }>;
@@ -99,17 +100,7 @@ export default async function SignupPage({ searchParams }: SignupPageProps) {
               className="border-line-strong bg-canvas text-ink focus:border-accent mt-2 block w-full rounded-md border px-3 py-2"
             />
           </label>
-          <label className="text-ink block text-sm font-medium">
-            Password
-            <input
-              name="password"
-              type="password"
-              required
-              minLength={8}
-              autoComplete="new-password"
-              className="border-line-strong bg-canvas text-ink focus:border-accent mt-2 block w-full rounded-md border px-3 py-2"
-            />
-          </label>
+          <PasswordField />
           <button className="bg-accent text-on-accent hover:bg-accent-strong w-full rounded-md px-4 py-2 font-semibold transition-colors">
             Sign up
           </button>

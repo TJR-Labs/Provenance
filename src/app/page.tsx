@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { Category } from "../../generated/prisma";
 import { ProjectCard } from "~/app/project-card";
 import { getServerCaller } from "~/server/api/caller";
@@ -13,12 +15,21 @@ export default async function Home({ searchParams }: HomeProps) {
     (value) => value === params.category,
   );
   const hashtag = params.hashtag?.trim();
-  const projects = await (
-    await getServerCaller()
-  ).discovery.list({
-    category,
-    hashtag,
-  });
+  const caller = await getServerCaller();
+  const [projects, popularHashtags] = await Promise.all([
+    caller.discovery.list({ category, hashtag }),
+    caller.discovery.popularHashtags(),
+  ]);
+
+  // A chip filters exactly like typing the tag into the hashtag input and
+  // submitting: same query params, preserving any active category filter.
+  const activeHashtag = hashtag?.replace(/^#/, "").toLowerCase();
+  const hashtagHref = (tag: string) => {
+    const query = new URLSearchParams();
+    if (category) query.set("category", category);
+    query.set("hashtag", tag);
+    return `/?${query.toString()}`;
+  };
 
   return (
     <section className="mx-auto w-full max-w-6xl px-6 py-14">
@@ -63,6 +74,33 @@ export default async function Home({ searchParams }: HomeProps) {
           Filter
         </button>
       </form>
+
+      {popularHashtags.length ? (
+        <div className="mt-4">
+          <p className="text-faint font-mono text-xs tracking-[0.14em] uppercase">
+            Popular tags
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {popularHashtags.map((tag) => {
+              const active = tag === activeHashtag;
+              return (
+                <Link
+                  key={tag}
+                  href={hashtagHref(tag)}
+                  aria-pressed={active}
+                  className={
+                    active
+                      ? "bg-accent text-on-accent rounded-full px-3 py-1 text-sm font-medium transition-colors"
+                      : "border-line-strong text-muted hover:bg-raised hover:text-ink rounded-full border px-3 py-1 text-sm font-medium transition-colors"
+                  }
+                >
+                  #{tag}
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
 
       {projects.length ? (
         <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
