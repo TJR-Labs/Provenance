@@ -1,6 +1,8 @@
+import { AuthError } from "next-auth";
 import { redirect } from "next/navigation";
 
 import { getServerCaller } from "~/server/api/caller";
+import { signIn } from "~/server/auth";
 import { OAuthButtons } from "../oauth-buttons";
 
 type SignupPageProps = {
@@ -17,15 +19,17 @@ export default async function SignupPage({ searchParams }: SignupPageProps) {
       const item = formData.get(name);
       return typeof item === "string" ? item : "";
     };
-    let destination = "/login?created=1";
+    const password = value("password");
+    let username: string;
     try {
-      await (
+      const user = await (
         await getServerCaller()
       ).users.signup({
         username: value("username"),
         displayName: value("displayName"),
-        password: value("password"),
+        password,
       });
+      username = user.username;
     } catch (caught) {
       const message =
         caught instanceof Error && caught.message.includes("already in use")
@@ -33,9 +37,27 @@ export default async function SignupPage({ searchParams }: SignupPageProps) {
           : caught instanceof Error
             ? caught.message
             : "Unable to create your account.";
-      destination = `/signup?error=${encodeURIComponent(message)}`;
+      redirect(`/signup?error=${encodeURIComponent(message)}`);
     }
-    redirect(destination);
+
+    let signInFailed = false;
+    try {
+      await signIn("credentials", {
+        username,
+        password,
+        redirectTo: `/${username}`,
+      });
+    } catch (error) {
+      if (error instanceof AuthError) {
+        signInFailed = true;
+      } else {
+        throw error;
+      }
+    }
+
+    if (signInFailed) {
+      redirect("/login?created=1");
+    }
   }
 
   return (

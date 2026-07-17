@@ -12,6 +12,7 @@ import { auth } from "~/server/auth";
 import { categoryLabels } from "~/server/categories";
 import { profileScopeClass, sanitizeCustomCss } from "~/server/sanitize-css";
 import { profileSections } from "~/server/users";
+import { OnboardingChecklist } from "./onboarding-checklist";
 
 type ProfilePageProps = {
   params: Promise<{ username: string }>;
@@ -71,6 +72,10 @@ export default async function ProfilePage({
     themeClasses[profile.theme as keyof typeof themeClasses] ??
     themeClasses.default;
   const reportAction = reportProfileAction.bind(null, profile.username);
+  const onboarding =
+    session?.user.id === profile.id
+      ? await (await getServerCaller()).profile.onboardingChecklist()
+      : null;
 
   return (
     <div
@@ -83,6 +88,9 @@ export default async function ProfilePage({
           <p className="border-success-line bg-success-surface text-success mb-8 rounded-md border px-4 py-3 text-sm">
             Thank you. Your report was submitted for review.
           </p>
+        ) : null}
+        {onboarding?.shouldShow ? (
+          <OnboardingChecklist items={onboarding.items} />
         ) : null}
         <header className="flex flex-col gap-6 sm:flex-row sm:items-center">
           {profile.avatarUrl ? (

@@ -5,6 +5,7 @@ import {
   protectedProcedure,
   publicProcedure,
 } from "~/server/api/trpc";
+import { dismissOnboarding, getOnboardingChecklist } from "~/server/onboarding";
 import { getPublicProfile } from "~/server/profiles";
 import { updateProfile, updateProfileInputSchema } from "~/server/users";
 
@@ -36,6 +37,14 @@ export const profileRouter = createTRPCRouter({
         customCss: true,
       },
     }),
+  ),
+
+  onboardingChecklist: protectedProcedure.query(({ ctx }) =>
+    getOnboardingChecklist(ctx.session.user.id, ctx.db),
+  ),
+
+  dismissOnboarding: protectedProcedure.mutation(({ ctx }) =>
+    dismissOnboarding(ctx.session.user.id, ctx.db),
   ),
 
   update: protectedProcedure

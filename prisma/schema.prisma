@@ -71,6 +71,7 @@ model User {
   canvasDraftSavedAt    DateTime?
   canvasPublishedAt     DateTime?
   canvasHintDismissedAt DateTime?
+  onboardingDismissedAt DateTime?
   customCss             String?
   banned                Boolean           @default(false)
   createdAt             DateTime          @default(now())

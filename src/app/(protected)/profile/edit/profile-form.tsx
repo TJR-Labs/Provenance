@@ -446,7 +446,7 @@ export function ProfileForm({
         <input type="hidden" name="sections" value={sections.join(",")} />
       </fieldset>
 
-      <fieldset>
+      <fieldset id="layout-mode">
         <legend className="text-ink text-sm font-medium">Layout mode</legend>
         <p className="text-muted mt-1 text-sm">
           Grid uses the classic sections above. Canvas lets you freely arrange
