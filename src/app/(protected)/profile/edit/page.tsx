@@ -8,17 +8,14 @@ type EditProfilePageProps = {
 };
 type LinkValue = { label: string; url: string };
 
-function links(value: unknown) {
-  if (!Array.isArray(value)) return "";
-  return value
-    .filter(
-      (item): item is LinkValue =>
-        isRecord(item) &&
-        typeof item.label === "string" &&
-        typeof item.url === "string",
-    )
-    .map((item) => `${item.label} | ${item.url}`)
-    .join("\n");
+function links(value: unknown): LinkValue[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (item): item is LinkValue =>
+      isRecord(item) &&
+      typeof item.label === "string" &&
+      typeof item.url === "string",
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

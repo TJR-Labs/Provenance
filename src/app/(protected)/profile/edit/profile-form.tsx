@@ -1,12 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
+import { safeExternalUrl } from "~/app/safe-external-url";
 import { api } from "~/trpc/react";
 
 type Section = "about" | "projects" | "links";
 type LayoutMode = "GRID" | "CANVAS";
+type ProfileLink = { label: string; url: string };
+type LinkRow = { id: number; label: string; url: string };
 
 type ProfileFormProps = {
   action: (formData: FormData) => void | Promise<void>;
@@ -17,7 +20,7 @@ type ProfileFormProps = {
     bio: string;
     school: string;
     avatarUrl: string;
-    links: string;
+    links: ProfileLink[];
     theme: string;
     sections: Section[];
     layoutMode: LayoutMode;
@@ -31,6 +34,42 @@ const labels: Record<Section, string> = {
   links: "Links",
 };
 
+// Fixed representative colors per profile theme (from the .profile-theme-*
+// token sets in globals.css). Hard-coded hex so the swatches render
+// identically regardless of the app's light/dark viewer theme.
+const themeOptions: {
+  value: string;
+  label: string;
+  bg: string;
+  accent: string;
+  ink: string;
+}[] = [
+  {
+    value: "default",
+    label: "Default dark",
+    bg: "#131714",
+    accent: "#5fc694",
+    ink: "#e9e7db",
+  },
+  {
+    value: "paper",
+    label: "Paper light",
+    bg: "#f6f1e6",
+    accent: "#7a4a1e",
+    ink: "#262218",
+  },
+  {
+    value: "studio",
+    label: "Indigo studio",
+    bg: "#171732",
+    accent: "#a5a1f0",
+    ink: "#e9e9f7",
+  },
+];
+
+const linkInputClass =
+  "border-line-strong bg-canvas text-ink placeholder:text-faint focus:border-accent mt-2 block w-full rounded-md border px-3 py-2 text-sm";
+
 export function ProfileForm({
   action,
   error,
@@ -42,7 +81,79 @@ export function ProfileForm({
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const [layoutMode, setLayoutMode] = useState(initial.layoutMode);
+  const [theme, setTheme] = useState(initial.theme);
   const setMode = api.canvas.setMode.useMutation();
+
+  // Editable Label+URL rows replace the old pipe-delimited textarea. Rows
+  // carry a stable id so React keys and per-row errors survive reordering.
+  const [linkRows, setLinkRows] = useState<LinkRow[]>(() =>
+    initial.links.map((link, index) => ({
+      id: index,
+      label: link.label,
+      url: link.url,
+    })),
+  );
+  const [linkErrors, setLinkErrors] = useState<Record<number, string>>({});
+  const nextRowId = useRef(initial.links.length);
+
+  // Custom CSS is hidden behind an advanced disclosure. It opens by default
+  // only when the user already has saved CSS, so their own customization is
+  // never hidden from them. Tracked in state so toggling survives re-renders.
+  const [cssOpen, setCssOpen] = useState(Boolean(initial.customCss));
+
+  function addLinkRow() {
+    setLinkRows((rows) => [
+      ...rows,
+      { id: nextRowId.current++, label: "", url: "" },
+    ]);
+  }
+
+  function removeLinkRow(id: number) {
+    setLinkRows((rows) => rows.filter((row) => row.id !== id));
+    setLinkErrors((errors) => {
+      const next = { ...errors };
+      delete next[id];
+      return next;
+    });
+  }
+
+  function updateLinkRow(id: number, patch: Partial<Omit<LinkRow, "id">>) {
+    setLinkRows((rows) =>
+      rows.map((row) => (row.id === id ? { ...row, ...patch } : row)),
+    );
+  }
+
+  // Serialize rows into the pipe-delimited format the server action already
+  // parses, so actions.ts is unchanged. Fully-empty rows are dropped.
+  const serializedLinks = linkRows
+    .filter((row) => row.label.trim() || row.url.trim())
+    .map((row) => `${row.label.trim()} | ${row.url.trim()}`)
+    .join("\n");
+
+  // Validate every non-empty row via safeExternalUrl before allowing save,
+  // mirroring the canvas LinkPanel. Each bad row gets its own inline error;
+  // valid rows keep their values so one bad row does not discard the others.
+  function validateLinks(event: React.FormEvent<HTMLFormElement>) {
+    const errors: Record<number, string> = {};
+    for (const row of linkRows) {
+      const label = row.label.trim();
+      const url = row.url.trim();
+      if (!label && !url) continue;
+      if (!label) {
+        errors[row.id] = "Add a label for the link.";
+        continue;
+      }
+      if (!safeExternalUrl(url)) {
+        errors[row.id] = "Enter a valid http(s) URL.";
+      }
+    }
+    if (Object.keys(errors).length > 0) {
+      event.preventDefault();
+      setLinkErrors(errors);
+      return;
+    }
+    setLinkErrors({});
+  }
 
   // Layout mode is its own immediate action (tRPC mutation), separate from
   // the server-action form submit that saves the rest of the profile.
@@ -92,6 +203,7 @@ export function ProfileForm({
   return (
     <form
       action={action}
+      onSubmit={validateLinks}
       className="border-line bg-surface mt-8 space-y-6 rounded-lg border p-6 sm:p-8"
     >
       {error ? (
@@ -162,30 +274,116 @@ export function ProfileForm({
         <input type="hidden" name="avatarUrl" value={avatarUrl} />
       </div>
 
-      <label className="text-ink block text-sm font-medium">
-        External links{" "}
-        <span className="text-faint font-normal">
-          (one per line: Label | https://url)
-        </span>
-        <textarea
-          name="links"
-          rows={5}
-          defaultValue={initial.links}
-          className="border-line-strong bg-canvas text-ink focus:border-accent mt-2 block w-full rounded-md border px-3 py-2"
-        />
-      </label>
-      <label className="text-ink block text-sm font-medium">
-        Theme
+      <fieldset>
+        <legend className="text-ink text-sm font-medium">External links</legend>
+        <p className="text-muted mt-1 text-sm">
+          Add links to your work elsewhere. Each needs a label and an http(s)
+          URL.
+        </p>
+        <ul className="mt-3 space-y-3">
+          {linkRows.map((row) => (
+            <li key={row.id} className="border-line rounded-md border p-3">
+              <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+                <label className="text-ink block text-sm font-medium">
+                  Label
+                  <input
+                    value={row.label}
+                    maxLength={40}
+                    onChange={(event) =>
+                      updateLinkRow(row.id, { label: event.target.value })
+                    }
+                    className={linkInputClass}
+                  />
+                </label>
+                <label className="text-ink block text-sm font-medium">
+                  URL
+                  <input
+                    value={row.url}
+                    placeholder="https://example.com"
+                    onChange={(event) =>
+                      updateLinkRow(row.id, { url: event.target.value })
+                    }
+                    className={linkInputClass}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => removeLinkRow(row.id)}
+                  className="text-danger border-line-strong hover:bg-raised h-fit rounded-md border px-3 py-2 text-sm font-medium transition-colors"
+                >
+                  Remove
+                </button>
+              </div>
+              {linkErrors[row.id] ? (
+                <p role="alert" className="text-danger mt-2 text-sm">
+                  {linkErrors[row.id]}
+                </p>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+        <button
+          type="button"
+          onClick={addLinkRow}
+          className="border-line-strong text-muted hover:bg-raised hover:text-ink mt-3 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors"
+        >
+          Add link
+        </button>
+        <input type="hidden" name="links" value={serializedLinks} />
+      </fieldset>
+
+      <div>
+        <label htmlFor="theme" className="text-ink block text-sm font-medium">
+          Theme
+        </label>
         <select
+          id="theme"
           name="theme"
-          defaultValue={initial.theme}
+          value={theme}
+          onChange={(event) => setTheme(event.target.value)}
           className="border-line-strong bg-canvas text-ink mt-2 block w-full rounded-md border px-3 py-2"
         >
-          <option value="default">Default dark</option>
-          <option value="paper">Paper light</option>
-          <option value="studio">Indigo studio</option>
+          {themeOptions.map((option) => (
+            <option
+              key={option.value}
+              value={option.value}
+              style={{ backgroundColor: option.bg, color: option.ink }}
+            >
+              {option.label}
+            </option>
+          ))}
         </select>
-      </label>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {themeOptions.map((option) => {
+            const selected = theme === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => setTheme(option.value)}
+                className={
+                  selected
+                    ? "border-accent bg-raised flex items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors"
+                    : "border-line-strong hover:bg-raised flex items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors"
+                }
+              >
+                <span
+                  aria-hidden
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded"
+                  style={{ backgroundColor: option.bg }}
+                >
+                  <span
+                    className="h-3 w-3 rounded-full"
+                    style={{ backgroundColor: option.accent }}
+                  />
+                </span>
+                <span className="text-ink">{option.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       <fieldset>
         <legend className="text-ink text-sm font-medium">
@@ -290,20 +488,32 @@ export function ProfileForm({
         ) : null}
       </fieldset>
 
-      <label className="text-ink block text-sm font-medium">
-        Custom CSS
-        <textarea
-          name="customCss"
-          rows={10}
-          defaultValue={initial.customCss}
-          spellCheck={false}
-          className="border-line-strong bg-canvas text-ink focus:border-accent mt-2 block w-full rounded-md border px-3 py-2 font-mono text-sm"
-        />
-        <span className="text-faint mt-2 block text-xs font-normal">
-          CSS is automatically scoped to your profile. Imports and external
-          resources are removed.
-        </span>
-      </label>
+      <details
+        open={cssOpen}
+        onToggle={(event) => setCssOpen(event.currentTarget.open)}
+        className="border-line rounded-md border p-4"
+      >
+        <summary className="text-ink cursor-pointer text-sm font-medium">
+          Advanced: custom CSS
+        </summary>
+        <label className="text-ink mt-3 block text-sm font-medium">
+          Custom CSS
+          <textarea
+            name="customCss"
+            rows={10}
+            defaultValue={initial.customCss}
+            spellCheck={false}
+            className="border-line-strong bg-canvas text-ink focus:border-accent mt-2 block w-full rounded-md border px-3 py-2 font-mono text-sm"
+          />
+          <span className="text-faint mt-2 block text-xs font-normal">
+            CSS is automatically scoped to your profile. Imports and external
+            resources are removed. Example:{" "}
+            <code className="text-muted font-mono">
+              .profile-muted {"{ color: #666; }"}
+            </code>
+          </span>
+        </label>
+      </details>
       <button
         disabled={uploading}
         className="bg-accent text-on-accent hover:bg-accent-strong rounded-md px-5 py-2.5 font-semibold transition-colors disabled:opacity-50"
