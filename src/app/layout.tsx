@@ -79,10 +79,10 @@ export default async function RootLayout({
                         My profile
                       </Link>
                       <Link
-                        href="/projects/new"
+                        href="/my-work"
                         className="text-muted hover:text-ink font-medium transition-colors"
                       >
-                        New project
+                        My Work
                       </Link>
                       <Link
                         href="/account"

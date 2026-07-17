@@ -7,6 +7,8 @@ type ProjectDelegate = Pick<
   PrismaClient["project"],
   "create" | "delete" | "findFirst" | "findMany" | "findUnique" | "update"
 >;
+type UserReader = Pick<PrismaClient["user"], "findUniqueOrThrow">;
+type CanvasElementReader = Pick<PrismaClient["canvasElement"], "findMany">;
 
 export const projectLayouts = ["default", "gallery", "writeup"] as const;
 
@@ -159,6 +161,59 @@ export function discoverProjects(
     },
     orderBy: { createdAt: "desc" },
   });
+}
+
+// Lists the signed-in user's own projects for the "My Work" hub, with
+// placed/unplaced-on-canvas status mirroring the canvas editor's Library
+// sidebar (src/server/canvas.ts's getCanvasEditorState resolves the same
+// draft-vs-published state before checking PROJECT placements).
+export async function listMyProjects(
+  userId: string,
+  projects: ProjectDelegate = db.project,
+  users: UserReader = db.user,
+  canvasElements: CanvasElementReader = db.canvasElement,
+) {
+  const [myProjects, user] = await Promise.all([
+    projects.findMany({
+      where: { userId },
+      select: {
+        id: true,
+        title: true,
+        media: { select: { url: true }, orderBy: { order: "asc" }, take: 1 },
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+    users.findUniqueOrThrow({
+      where: { id: userId },
+      select: { canvasDraftSavedAt: true, canvasPublishedAt: true },
+    }),
+  ]);
+
+  const hasNewerDraft =
+    user.canvasDraftSavedAt !== null &&
+    (user.canvasPublishedAt === null ||
+      user.canvasDraftSavedAt > user.canvasPublishedAt);
+  const state = hasNewerDraft ? "DRAFT" : "PUBLISHED";
+
+  const placedElements =
+    user.canvasDraftSavedAt === null && user.canvasPublishedAt === null
+      ? []
+      : await canvasElements.findMany({
+          where: { userId, state, type: "PROJECT" },
+          select: { projectId: true },
+        });
+  const placedProjectIds = new Set(
+    placedElements.flatMap((element) =>
+      element.projectId ? [element.projectId] : [],
+    ),
+  );
+
+  return myProjects.map((project) => ({
+    id: project.id,
+    title: project.title,
+    thumbnailUrl: project.media[0]?.url ?? null,
+    placed: placedProjectIds.has(project.id),
+  }));
 }
 
 export class ProjectNotFoundError extends Error {}

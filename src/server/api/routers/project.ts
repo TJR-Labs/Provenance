@@ -10,6 +10,7 @@ import {
   createProject,
   deleteProject,
   getPublicProject,
+  listMyProjects,
   listProjectsByUsername,
   ProjectNotFoundError,
   ProjectOwnershipError,
@@ -63,6 +64,10 @@ export const projectRouter = createTRPCRouter({
   getById: publicProcedure
     .input(z.object({ id: z.string().min(1) }))
     .query(({ ctx, input }) => getPublicProject(input.id, ctx.db.project)),
+
+  listMine: protectedProcedure.query(({ ctx }) =>
+    listMyProjects(ctx.session.user.id),
+  ),
 
   listByUsername: publicProcedure
     .input(z.object({ username: z.string().trim().min(1) }))
