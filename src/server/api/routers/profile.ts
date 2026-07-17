@@ -12,7 +12,12 @@ export const profileRouter = createTRPCRouter({
   getByUsername: publicProcedure
     .input(z.object({ username: z.string().trim().min(1) }))
     .query(({ ctx, input }) =>
-      getPublicProfile(input.username, ctx.db.user, ctx.db.project),
+      getPublicProfile(
+        input.username,
+        ctx.db.user,
+        ctx.db.project,
+        ctx.db.canvasElement,
+      ),
     ),
 
   me: protectedProcedure.query(({ ctx }) =>
@@ -27,6 +32,7 @@ export const profileRouter = createTRPCRouter({
         links: true,
         theme: true,
         layoutSections: true,
+        layoutMode: true,
         customCss: true,
       },
     }),

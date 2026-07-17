@@ -35,27 +35,47 @@ enum MediaKind {
   EXTERNAL
 }
 
+enum LayoutMode {
+  GRID
+  CANVAS
+}
+
+enum CanvasElementType {
+  ABOUT
+  LINKS
+  PROJECT
+}
+
+enum CanvasElementState {
+  DRAFT
+  PUBLISHED
+}
+
 model User {
-  id               String            @id @default(cuid())
-  username         String            @unique
-  passwordHash     String?
-  email            String?           @unique
-  role             Role              @default(USER)
-  displayName      String
-  bio              String?
-  school           String?
-  avatarUrl        String?
-  links            Json?
-  theme            String            @default("default")
-  layoutSections   Json?
-  customCss        String?
-  banned           Boolean           @default(false)
-  createdAt        DateTime          @default(now())
-  projects         Project[]
-  reportsMade      Report[]          @relation("ReportsMade")
-  reportsAgainst   Report[]          @relation("ReportsAgainstUser")
-  accounts         Account[]
-  oauthLinkIntents OAuthLinkIntent[]
+  id                 String            @id @default(cuid())
+  username           String            @unique
+  passwordHash       String?
+  email              String?           @unique
+  role               Role              @default(USER)
+  displayName        String
+  bio                String?
+  school             String?
+  avatarUrl          String?
+  links              Json?
+  theme              String            @default("default")
+  layoutSections     Json?
+  layoutMode         LayoutMode        @default(GRID)
+  canvasDraftSavedAt DateTime?
+  canvasPublishedAt  DateTime?
+  customCss          String?
+  banned             Boolean           @default(false)
+  createdAt          DateTime          @default(now())
+  projects           Project[]
+  reportsMade        Report[]          @relation("ReportsMade")
+  reportsAgainst     Report[]          @relation("ReportsAgainstUser")
+  accounts           Account[]
+  oauthLinkIntents   OAuthLinkIntent[]
+  canvasElements     CanvasElement[]
 }
 
 model Account {
@@ -104,22 +124,40 @@ model LoginAttempt {
 }
 
 model Project {
-  id          String         @id @default(cuid())
-  userId      String
-  user        User           @relation(fields: [userId], references: [id])
-  title       String
-  description String
-  category    Category
-  hashtags    String[]
-  links       String[]
-  layout      String         @default("default")
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  media       ProjectMedia[]
-  reports     Report[]
+  id             String          @id @default(cuid())
+  userId         String
+  user           User            @relation(fields: [userId], references: [id])
+  title          String
+  description    String
+  category       Category
+  hashtags       String[]
+  links          String[]
+  layout         String          @default("default")
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  media          ProjectMedia[]
+  reports        Report[]
+  canvasElements CanvasElement[]
 
   @@index([userId])
   @@index([category])
+}
+
+model CanvasElement {
+  id        String             @id @default(cuid())
+  userId    String
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  state     CanvasElementState
+  type      CanvasElementType
+  projectId String?
+  project   Project?           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  x         Int
+  y         Int
+  width     Int
+  height    Int
+  zIndex    Int
+
+  @@index([userId, state])
 }
 
 model ProjectMedia {

@@ -1,9 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import type { ComponentProps } from "react";
 
+import { sortForMobile } from "~/app/(protected)/profile/canvas/canvas-math";
 import { ProjectCard } from "~/app/project-card";
 import { reportProfileAction } from "~/app/report-actions";
 import { safeExternalUrl } from "~/app/safe-external-url";
+import { CANVAS_MAX_HEIGHT, CANVAS_WIDTH } from "~/lib/canvas-constants";
 import { getServerCaller } from "~/server/api/caller";
 import { auth } from "~/server/auth";
 import { categoryLabels } from "~/server/categories";
@@ -127,87 +130,95 @@ export default async function ProfilePage({
           </div>
         ) : null}
 
-        {sections.map((section) => {
-          if (section === "about") {
-            return (
-              <div key={section} className="mt-12 max-w-3xl">
-                <h2 className="font-display text-2xl font-semibold">About</h2>
-                <p className="profile-muted text-muted mt-4 leading-7 break-words whitespace-pre-wrap">
-                  {profile.bio ?? "This person has not added a bio yet."}
-                </p>
-              </div>
-            );
-          }
-          if (section === "links") {
+        {profile.layoutMode === "CANVAS" ? (
+          <CanvasProfileLayout
+            elements={profile.canvasElements}
+            bio={profile.bio}
+            links={links}
+          />
+        ) : (
+          sections.map((section) => {
+            if (section === "about") {
+              return (
+                <div key={section} className="mt-12 max-w-3xl">
+                  <h2 className="font-display text-2xl font-semibold">About</h2>
+                  <p className="profile-muted text-muted mt-4 leading-7 break-words whitespace-pre-wrap">
+                    {profile.bio ?? "This person has not added a bio yet."}
+                  </p>
+                </div>
+              );
+            }
+            if (section === "links") {
+              return (
+                <div key={section} className="mt-12">
+                  <h2 className="font-display text-2xl font-semibold">Links</h2>
+                  {links.length ? (
+                    <div className="mt-4 flex flex-wrap gap-3">
+                      {links.map((link) => {
+                        const href = safeExternalUrl(link.url);
+                        return href ? (
+                          <a
+                            key={`${link.label}-${link.url}`}
+                            href={href}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="border-line-strong hover:border-accent hover:text-accent max-w-full truncate rounded-md border px-4 py-2 font-medium transition-colors"
+                          >
+                            {link.label}
+                          </a>
+                        ) : (
+                          <span
+                            key={`${link.label}-${link.url}`}
+                            className="border-line text-faint max-w-full truncate rounded-md border px-4 py-2"
+                          >
+                            {link.label}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="profile-muted text-muted mt-4">
+                      No links added.
+                    </p>
+                  )}
+                </div>
+              );
+            }
             return (
               <div key={section} className="mt-12">
-                <h2 className="font-display text-2xl font-semibold">Links</h2>
-                {links.length ? (
-                  <div className="mt-4 flex flex-wrap gap-3">
-                    {links.map((link) => {
-                      const href = safeExternalUrl(link.url);
-                      return href ? (
-                        <a
-                          key={`${link.label}-${link.url}`}
-                          href={href}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="border-line-strong hover:border-accent hover:text-accent max-w-full truncate rounded-md border px-4 py-2 font-medium transition-colors"
-                        >
-                          {link.label}
-                        </a>
-                      ) : (
-                        <span
-                          key={`${link.label}-${link.url}`}
-                          className="border-line text-faint max-w-full truncate rounded-md border px-4 py-2"
-                        >
-                          {link.label}
-                        </span>
-                      );
-                    })}
+                <div className="flex items-center justify-between gap-4">
+                  <h2 className="font-display text-2xl font-semibold">
+                    Projects
+                  </h2>
+                  {session?.user.id === profile.id ? (
+                    <Link
+                      href="/projects/new"
+                      className="text-accent hover:text-accent-strong text-sm font-semibold transition-colors"
+                    >
+                      Add project
+                    </Link>
+                  ) : null}
+                </div>
+                {profile.projects.length ? (
+                  <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                    {profile.projects.map((project) => (
+                      <ProjectCard key={project.id} project={project} />
+                    ))}
                   </div>
                 ) : (
-                  <p className="profile-muted text-muted mt-4">
-                    No links added.
-                  </p>
+                  <div className="border-line-strong mt-6 rounded-lg border border-dashed px-6 py-14 text-center">
+                    <p className="text-faint font-mono text-xs tracking-[0.14em] uppercase">
+                      No records yet
+                    </p>
+                    <p className="profile-muted text-muted mt-3">
+                      No projects yet.
+                    </p>
+                  </div>
                 )}
               </div>
             );
-          }
-          return (
-            <div key={section} className="mt-12">
-              <div className="flex items-center justify-between gap-4">
-                <h2 className="font-display text-2xl font-semibold">
-                  Projects
-                </h2>
-                {session?.user.id === profile.id ? (
-                  <Link
-                    href="/projects/new"
-                    className="text-accent hover:text-accent-strong text-sm font-semibold transition-colors"
-                  >
-                    Add project
-                  </Link>
-                ) : null}
-              </div>
-              {profile.projects.length ? (
-                <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                  {profile.projects.map((project) => (
-                    <ProjectCard key={project.id} project={project} />
-                  ))}
-                </div>
-              ) : (
-                <div className="border-line-strong mt-6 rounded-lg border border-dashed px-6 py-14 text-center">
-                  <p className="text-faint font-mono text-xs tracking-[0.14em] uppercase">
-                    No records yet
-                  </p>
-                  <p className="profile-muted text-muted mt-3">
-                    No projects yet.
-                  </p>
-                </div>
-              )}
-            </div>
-          );
-        })}
+          })
+        )}
 
         <div className="rule-double mt-16 pt-8">
           {session ? (
@@ -233,4 +244,130 @@ export default async function ProfilePage({
       </section>
     </div>
   );
+}
+
+type PublicCanvasElement = {
+  id: string;
+  type: "ABOUT" | "LINKS" | "PROJECT";
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  zIndex: number;
+  project: ComponentProps<typeof ProjectCard>["project"] | null;
+};
+
+function CanvasProfileLayout({
+  elements,
+  bio,
+  links,
+}: {
+  elements: PublicCanvasElement[];
+  bio: string | null;
+  links: ProfileLink[];
+}) {
+  if (elements.length === 0) {
+    return (
+      <div className="border-line-strong mt-12 rounded-lg border border-dashed px-6 py-14 text-center">
+        <p className="text-faint font-mono text-xs tracking-[0.14em] uppercase">
+          No records yet
+        </p>
+        <p className="profile-muted text-muted mt-3">Nothing here yet.</p>
+      </div>
+    );
+  }
+
+  const height = Math.min(
+    CANVAS_MAX_HEIGHT,
+    Math.max(...elements.map((element) => element.y + element.height)),
+  );
+
+  return (
+    <>
+      {/* Desktop/tablet: published positions, sizes, and layers. */}
+      <div className="mt-12 hidden md:block">
+        <div className="relative" style={{ width: CANVAS_WIDTH, height }}>
+          {elements.map((element) => (
+            <div
+              key={element.id}
+              className="absolute overflow-auto"
+              style={{
+                left: element.x,
+                top: element.y,
+                width: element.width,
+                height: element.height,
+                zIndex: element.zIndex,
+              }}
+            >
+              <CanvasElementContent element={element} bio={bio} links={links} />
+            </div>
+          ))}
+        </div>
+      </div>
+      {/* Mobile: linear fallback, stacked by y (x as tiebreaker). */}
+      <div className="mt-12 space-y-10 md:hidden">
+        {sortForMobile(elements).map((element) => (
+          <div key={element.id}>
+            <CanvasElementContent element={element} bio={bio} links={links} />
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function CanvasElementContent({
+  element,
+  bio,
+  links,
+}: {
+  element: PublicCanvasElement;
+  bio: string | null;
+  links: ProfileLink[];
+}) {
+  if (element.type === "ABOUT") {
+    return (
+      <div>
+        <h2 className="font-display text-2xl font-semibold">About</h2>
+        <p className="profile-muted text-muted mt-4 leading-7 break-words whitespace-pre-wrap">
+          {bio ?? "This person has not added a bio yet."}
+        </p>
+      </div>
+    );
+  }
+  if (element.type === "LINKS") {
+    return (
+      <div>
+        <h2 className="font-display text-2xl font-semibold">Links</h2>
+        {links.length ? (
+          <div className="mt-4 flex flex-wrap gap-3">
+            {links.map((link) => {
+              const href = safeExternalUrl(link.url);
+              return href ? (
+                <a
+                  key={`${link.label}-${link.url}`}
+                  href={href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="border-line-strong hover:border-accent hover:text-accent max-w-full truncate rounded-md border px-4 py-2 font-medium transition-colors"
+                >
+                  {link.label}
+                </a>
+              ) : (
+                <span
+                  key={`${link.label}-${link.url}`}
+                  className="border-line text-faint max-w-full truncate rounded-md border px-4 py-2"
+                >
+                  {link.label}
+                </span>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="profile-muted text-muted mt-4">No links added.</p>
+        )}
+      </div>
+    );
+  }
+  return element.project ? <ProjectCard project={element.project} /> : null;
 }

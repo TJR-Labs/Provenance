@@ -59,6 +59,7 @@ export default async function EditProfilePage({
           links: links(profile.links),
           theme: profile.theme,
           sections: sections(profile.layoutSections),
+          layoutMode: profile.layoutMode,
           customCss: profile.customCss ?? "",
         }}
       />

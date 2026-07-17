@@ -1,3 +1,4 @@
+import { canvasRouter } from "~/server/api/routers/canvas";
 import { discoveryRouter } from "~/server/api/routers/discovery";
 import { healthRouter } from "~/server/api/routers/health";
 import { moderationRouter } from "~/server/api/routers/moderation";
@@ -12,6 +13,7 @@ import { createCallerFactory, createTRPCRouter } from "~/server/api/trpc";
  * All routers added in /api/routers should be manually added here.
  */
 export const appRouter = createTRPCRouter({
+  canvas: canvasRouter,
   discovery: discoveryRouter,
   health: healthRouter,
   moderation: moderationRouter,
