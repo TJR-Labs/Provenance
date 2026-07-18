@@ -6,6 +6,7 @@ import {
   createTRPCRouter,
   protectedProcedure,
 } from "~/server/api/trpc";
+import { consumeRateLimit } from "~/server/rate-limit";
 import {
   createReport,
   listReports,
@@ -14,10 +15,26 @@ import {
   ReportTargetNotFoundError,
 } from "~/server/reports";
 
+const REPORT_RATE_LIMIT_SCOPE = "report";
+const REPORT_RATE_LIMIT_THRESHOLD = 10;
+const REPORT_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
+
 export const moderationRouter = createTRPCRouter({
   report: protectedProcedure
     .input(reportInputSchema)
     .mutation(async ({ ctx, input }) => {
+      await consumeRateLimit(
+        {
+          scope: REPORT_RATE_LIMIT_SCOPE,
+          key: ctx.session.user.id,
+          limit: REPORT_RATE_LIMIT_THRESHOLD,
+          windowMs: REPORT_RATE_LIMIT_WINDOW_MS,
+          lockoutMs: REPORT_RATE_LIMIT_WINDOW_MS,
+          message: "Too many reports submitted. Please try again later.",
+        },
+        ctx.db.rateLimitAttempt,
+      );
+
       try {
         return await createReport(
           ctx.session.user.id,
