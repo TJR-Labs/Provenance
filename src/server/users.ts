@@ -5,11 +5,22 @@ import { z } from "zod";
 
 import { hashPassword, verifyPassword } from "~/server/auth/password";
 import { db } from "~/server/db";
+import {
+  assertNotLockedOut,
+  recordRateLimitFailure,
+  resetRateLimit,
+  type RateLimitDelegate,
+} from "~/server/rate-limit";
 
 type UserDelegate = Pick<
   PrismaClient["user"],
   "create" | "findUnique" | "update"
 >;
+
+const CHANGE_PASSWORD_RATE_LIMIT_SCOPE = "change-password";
+const CHANGE_PASSWORD_FAILURE_THRESHOLD = 10;
+const CHANGE_PASSWORD_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
+const CHANGE_PASSWORD_LOCKOUT_DURATION_MS = 15 * 60 * 1000;
 
 const oauthUserSelect = {
   id: true,
@@ -643,13 +654,31 @@ export async function changePassword(
   currentPassword: string,
   newPassword: string,
   users: UserDelegate = db.user,
+  rateLimits: RateLimitDelegate = db.rateLimitAttempt,
 ) {
+  await assertNotLockedOut(
+    CHANGE_PASSWORD_RATE_LIMIT_SCOPE,
+    userId,
+    rateLimits,
+    "Too many incorrect current-password attempts. Please try again later.",
+  );
+
   const user = await users.findUnique({
     where: { id: userId },
     select: { passwordHash: true },
   });
 
   if (!user || !(await verifyPassword(currentPassword, user.passwordHash))) {
+    await recordRateLimitFailure(
+      {
+        scope: CHANGE_PASSWORD_RATE_LIMIT_SCOPE,
+        key: userId,
+        limit: CHANGE_PASSWORD_FAILURE_THRESHOLD,
+        windowMs: CHANGE_PASSWORD_ATTEMPT_WINDOW_MS,
+        lockoutMs: CHANGE_PASSWORD_LOCKOUT_DURATION_MS,
+      },
+      rateLimits,
+    );
     throw new InvalidCurrentPasswordError();
   }
 
@@ -657,6 +686,8 @@ export async function changePassword(
     where: { id: userId },
     data: { passwordHash: await hashPassword(newPassword) },
   });
+
+  await resetRateLimit(CHANGE_PASSWORD_RATE_LIMIT_SCOPE, userId, rateLimits);
 }
 
 export async function updateProfile(

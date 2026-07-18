@@ -7,6 +7,7 @@ import {
   protectedProcedure,
   publicProcedure,
 } from "~/server/api/trpc";
+import { consumeRateLimit, resolveClientIp } from "~/server/rate-limit";
 import {
   banUser,
   beginOAuthLink,
@@ -28,6 +29,10 @@ import {
   unlinkOAuthAccount,
 } from "~/server/users";
 
+const SIGNUP_RATE_LIMIT_SCOPE = "signup";
+const SIGNUP_RATE_LIMIT_THRESHOLD = 5;
+const SIGNUP_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+
 export const usersRouter = createTRPCRouter({
   list: adminProcedure.query(({ ctx }) =>
     ctx.db.user.findMany({
@@ -46,6 +51,19 @@ export const usersRouter = createTRPCRouter({
   signup: publicProcedure
     .input(createUserInputSchema)
     .mutation(async ({ ctx, input }) => {
+      await consumeRateLimit(
+        {
+          scope: SIGNUP_RATE_LIMIT_SCOPE,
+          key: resolveClientIp(ctx.headers),
+          limit: SIGNUP_RATE_LIMIT_THRESHOLD,
+          windowMs: SIGNUP_RATE_LIMIT_WINDOW_MS,
+          lockoutMs: SIGNUP_RATE_LIMIT_WINDOW_MS,
+          message:
+            "Too many signup attempts from this network. Please try again later.",
+        },
+        ctx.db.rateLimitAttempt,
+      );
+
       try {
         return await createUser(input, ctx.db.user);
       } catch (error) {
@@ -115,6 +133,7 @@ export const usersRouter = createTRPCRouter({
           input.currentPassword,
           input.newPassword,
           ctx.db.user,
+          ctx.db.rateLimitAttempt,
         );
         return { success: true as const };
       } catch (error) {

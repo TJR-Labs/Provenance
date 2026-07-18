@@ -103,6 +103,21 @@ model LoginAttempt {
   lockedUntil   DateTime?
 }
 
+// Reusable rate-limit/lockout ledger, modeled on LoginAttempt: a rolling
+// window count keyed by an arbitrary (scope, key) pair, with an optional
+// lockout timestamp once a threshold is reached. `scope` namespaces the
+// limiter (e.g. "signup", "report", "change-password") and `key` identifies
+// the caller within that scope (an IP address or a user id).
+model RateLimitAttempt {
+  scope       String
+  key         String
+  count       Int
+  windowStart DateTime
+  lockedUntil DateTime?
+
+  @@id([scope, key])
+}
+
 model Project {
   id          String         @id @default(cuid())
   userId      String
