@@ -3,7 +3,10 @@ import { randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 
 import { env } from "~/env";
-import { validateUpload } from "~/server/upload-validation";
+import {
+  EXTENSION_BY_MIME_TYPE,
+  validateUpload,
+} from "~/server/upload-validation";
 
 export function createStorageClient() {
   if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -21,11 +24,10 @@ export async function uploadFile(
   userId: string,
   getClient: StorageClientFactory = createStorageClient,
 ) {
-  validateUpload(file);
-  const extension = file.name
-    .split(".")
-    .pop()
-    ?.replace(/[^a-zA-Z0-9]/g, "");
+  await validateUpload(file);
+  // Extension comes from the validated content type, never from the
+  // user-supplied filename, so declared/stored metadata can't disagree.
+  const extension = EXTENSION_BY_MIME_TYPE[file.type];
   const path = `${userId}/${randomUUID()}${extension ? `.${extension}` : ""}`;
   const bucket = env.SUPABASE_STORAGE_BUCKET;
   const storage = getClient().storage.from(bucket);
