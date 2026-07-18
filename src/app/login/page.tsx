@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { signIn } from "~/server/auth";
 import { OAuthButtons } from "../oauth-buttons";
+import { safeReturnTo } from "../safe-return-to";
 
 type LoginPageProps = {
   searchParams: Promise<{
@@ -15,10 +16,7 @@ type LoginPageProps = {
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const params = await searchParams;
   const showError = Boolean(params.error);
-  const returnTo =
-    params.returnTo?.startsWith("/") && !params.returnTo.startsWith("//")
-      ? params.returnTo
-      : "/";
+  const returnTo = safeReturnTo(params.returnTo);
 
   async function login(formData: FormData) {
     "use server";
