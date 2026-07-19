@@ -1,10 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useRef, useState } from "react";
 
 import { safeExternalUrl } from "~/app/safe-external-url";
-import { api } from "~/trpc/react";
 
 type Section = "about" | "projects" | "links";
 type LayoutMode = "GRID" | "CANVAS";
@@ -80,9 +78,7 @@ export function ProfileForm({
   const [avatarUrl, setAvatarUrl] = useState(initial.avatarUrl);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
-  const [layoutMode, setLayoutMode] = useState(initial.layoutMode);
   const [theme, setTheme] = useState(initial.theme);
-  const setMode = api.canvas.setMode.useMutation();
 
   // Editable Label+URL rows replace the old pipe-delimited textarea. Rows
   // carry a stable id so React keys and per-row errors survive reordering.
@@ -153,15 +149,6 @@ export function ProfileForm({
       return;
     }
     setLinkErrors({});
-  }
-
-  // Layout mode is its own immediate action (tRPC mutation), separate from
-  // the server-action form submit that saves the rest of the profile.
-  function chooseLayoutMode(mode: LayoutMode) {
-    if (mode === layoutMode || setMode.isPending) return;
-    const previous = layoutMode;
-    setLayoutMode(mode);
-    setMode.mutate({ mode }, { onError: () => setLayoutMode(previous) });
   }
 
   function move(index: number, direction: -1 | 1) {
@@ -444,51 +431,6 @@ export function ProfileForm({
             ))}
         </div>
         <input type="hidden" name="sections" value={sections.join(",")} />
-      </fieldset>
-
-      <fieldset id="layout-mode">
-        <legend className="text-ink text-sm font-medium">
-          How your profile is arranged
-        </legend>
-        <p className="text-muted mt-1 text-sm">
-          Grid stacks your sections (About, Projects, Links) in the order above.
-          Canvas lets you freely place and resize elements. Changes apply
-          immediately.
-        </p>
-        <div className="mt-3 flex gap-2">
-          {(["GRID", "CANVAS"] as const).map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              aria-pressed={layoutMode === mode}
-              disabled={setMode.isPending}
-              onClick={() => chooseLayoutMode(mode)}
-              className={
-                layoutMode === mode
-                  ? "bg-accent text-on-accent rounded-md px-3 py-1.5 text-sm font-medium disabled:opacity-50"
-                  : "border-line-strong text-muted hover:bg-raised hover:text-ink rounded-md border px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50"
-              }
-            >
-              {mode === "GRID" ? "Grid" : "Canvas"}
-            </button>
-          ))}
-        </div>
-        {setMode.isPending ? (
-          <p className="text-muted mt-2 text-sm">Switching layout…</p>
-        ) : null}
-        {setMode.isError ? (
-          <p role="alert" className="text-danger mt-2 text-sm">
-            Could not switch layout. Please try again.
-          </p>
-        ) : null}
-        {layoutMode === "CANVAS" ? (
-          <Link
-            href="/profile/canvas"
-            className="text-accent hover:text-accent-strong mt-3 inline-block text-sm font-semibold transition-colors"
-          >
-            Edit canvas layout →
-          </Link>
-        ) : null}
       </fieldset>
 
       <details

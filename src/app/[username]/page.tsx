@@ -13,10 +13,11 @@ import { categoryLabels } from "~/server/categories";
 import { profileScopeClass, sanitizeCustomCss } from "~/server/sanitize-css";
 import { profileSections } from "~/server/users";
 import { OnboardingChecklist } from "./onboarding-checklist";
+import { SavedConfirmation } from "./saved-confirmation";
 
 type ProfilePageProps = {
   params: Promise<{ username: string }>;
-  searchParams: Promise<{ reported?: string }>;
+  searchParams: Promise<{ reported?: string; saved?: string }>;
 };
 
 type ProfileLink = { label: string; url: string };
@@ -89,6 +90,9 @@ export default async function ProfilePage({
             Thank you. Your report was submitted for review.
           </p>
         ) : null}
+        {query.saved && session?.user.id === profile.id ? (
+          <SavedConfirmation />
+        ) : null}
         {onboarding?.shouldShow ? (
           <OnboardingChecklist items={onboarding.items} />
         ) : null}
@@ -114,12 +118,20 @@ export default async function ProfilePage({
               {profile.school ? ` · ${profile.school}` : ""}
             </p>
             {session?.user.id === profile.id ? (
-              <Link
-                href="/profile/edit"
-                className="text-accent hover:text-accent-strong mt-3 inline-block text-sm font-semibold transition-colors"
-              >
-                Edit profile
-              </Link>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Link
+                  href="/profile/edit"
+                  className="border-line-strong text-ink hover:border-accent hover:text-accent rounded-md border px-3 py-1.5 text-sm font-semibold transition-colors"
+                >
+                  Edit Profile
+                </Link>
+                <Link
+                  href="/profile/canvas"
+                  className="border-line-strong text-ink hover:border-accent hover:text-accent rounded-md border px-3 py-1.5 text-sm font-semibold transition-colors"
+                >
+                  Edit Layout
+                </Link>
+              </div>
             ) : null}
           </div>
         </header>
