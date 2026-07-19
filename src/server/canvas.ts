@@ -1,12 +1,13 @@
 import sanitizeHtml from "sanitize-html";
+import { Prisma } from "../../generated/prisma";
 import type {
   CanvasElementState,
-  Prisma,
   PrismaClient,
 } from "../../generated/prisma";
 import { z } from "zod";
 
 import { safeExternalUrl } from "~/app/safe-external-url";
+import { CARD_LAYOUTS, normalizeHashtags } from "~/lib/canvas-project-card";
 import {
   CANVAS_MAX_HEIGHT,
   CANVAS_MIN_HEIGHT,
@@ -79,6 +80,16 @@ export const canvasElementInputSchema = z
     avatarZoom: z.number().int().optional(),
     avatarOffsetX: z.number().int().optional(),
     avatarOffsetY: z.number().int().optional(),
+    // Canvas-only PROJECT card overrides (nullable columns, only valid on
+    // PROJECT elements). An omitted field means "unset"; a present
+    // projectHashtagsOverride — even an empty array — is an explicit override.
+    projectTitleOverride: z.string().trim().max(160).optional(),
+    projectDescriptionOverride: z.string().trim().max(20_000).optional(),
+    projectHashtagsOverride: z
+      .array(z.string().trim().max(60))
+      .max(30)
+      .optional(),
+    cardLayout: z.enum(CARD_LAYOUTS).optional(),
     x: z.number().int(),
     y: z.number().int(),
     width: z.number().int(),
@@ -141,6 +152,20 @@ export const canvasElementInputSchema = z
         code: z.ZodIssueCode.custom,
         message: "projectId is only valid for project elements.",
         path: ["projectId"],
+      });
+    }
+
+    const hasProjectOverride =
+      element.projectTitleOverride !== undefined ||
+      element.projectDescriptionOverride !== undefined ||
+      element.projectHashtagsOverride !== undefined ||
+      element.cardLayout !== undefined;
+    if (hasProjectOverride && element.type !== "PROJECT") {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "Project card overrides are only valid for project elements.",
+        path: ["cardLayout"],
       });
     }
 
@@ -289,6 +314,17 @@ function clampElements(elements: CanvasElementInput[]) {
             ),
           }
         : {}),
+      // Normalize a hashtags override the same way real project hashtags are
+      // normalized. Only when explicitly present (empty array stays empty —
+      // that is the "override to no hashtags" case, distinct from unset).
+      ...(element.type === "PROJECT" &&
+      element.projectHashtagsOverride !== undefined
+        ? {
+            projectHashtagsOverride: normalizeHashtags(
+              element.projectHashtagsOverride,
+            ),
+          }
+        : {}),
     };
   });
 }
@@ -323,6 +359,19 @@ function createRows(
       element.type === "AVATAR" ? (element.avatarOffsetX ?? null) : null,
     avatarOffsetY:
       element.type === "AVATAR" ? (element.avatarOffsetY ?? null) : null,
+    projectTitleOverride:
+      element.type === "PROJECT" ? (element.projectTitleOverride ?? null) : null,
+    projectDescriptionOverride:
+      element.type === "PROJECT"
+        ? (element.projectDescriptionOverride ?? null)
+        : null,
+    // Json column: SQL NULL (Prisma.DbNull) when unset; the array (possibly
+    // empty) when an override is present.
+    projectHashtagsOverride:
+      element.type === "PROJECT" && element.projectHashtagsOverride != null
+        ? element.projectHashtagsOverride
+        : Prisma.DbNull,
+    cardLayout: element.type === "PROJECT" ? (element.cardLayout ?? null) : null,
   }));
 }
 

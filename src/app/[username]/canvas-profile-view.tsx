@@ -6,6 +6,11 @@ import { ProjectCard } from "~/app/project-card";
 import { safeExternalUrl } from "~/app/safe-external-url";
 import { CANVAS_MAX_HEIGHT, CANVAS_WIDTH } from "~/lib/canvas-constants";
 import {
+  applyProjectCardOverrides,
+  coerceHashtagsOverride,
+  resolveCardLayout,
+} from "~/lib/canvas-project-card";
+import {
   AVATAR_OFFSET_DEFAULT,
   AVATAR_ZOOM_DEFAULT,
   avatarShapeRadius,
@@ -46,6 +51,13 @@ export type PublicCanvasElement = {
   avatarZoom: number | null;
   avatarOffsetX: number | null;
   avatarOffsetY: number | null;
+  // Canvas-only PROJECT card overrides. `projectHashtagsOverride` is the raw
+  // Json column (unknown so a prisma row passes through unchanged); coerced at
+  // render time.
+  projectTitleOverride: string | null;
+  projectDescriptionOverride: string | null;
+  projectHashtagsOverride: unknown;
+  cardLayout: string | null;
 };
 
 // Identity values the canvas identity elements derive from (avatar, name,
@@ -320,5 +332,16 @@ function CanvasElementContent({
       </span>
     );
   }
-  return element.project ? <ProjectCard project={element.project} /> : null;
+  if (!element.project) return null;
+  const effective = applyProjectCardOverrides(element.project, {
+    titleOverride: element.projectTitleOverride,
+    descriptionOverride: element.projectDescriptionOverride,
+    hashtagsOverride: coerceHashtagsOverride(element.projectHashtagsOverride),
+  });
+  return (
+    <ProjectCard
+      project={effective}
+      layout={resolveCardLayout(element.cardLayout)}
+    />
+  );
 }

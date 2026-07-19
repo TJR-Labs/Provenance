@@ -66,6 +66,10 @@ function el(overrides: Partial<PublicCanvasElement>): PublicCanvasElement {
     avatarZoom: null,
     avatarOffsetX: null,
     avatarOffsetY: null,
+    projectTitleOverride: null,
+    projectDescriptionOverride: null,
+    projectHashtagsOverride: null,
+    cardLayout: null,
     ...overrides,
   };
 }

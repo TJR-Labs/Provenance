@@ -23,6 +23,10 @@ type ServerElement = {
   imageCaption: string | null;
   linkLabel: string | null;
   linkUrl: string | null;
+  projectTitleOverride: string | null;
+  projectDescriptionOverride: string | null;
+  projectHashtagsOverride: string[] | null;
+  cardLayout: string | null;
   x: number;
   y: number;
   width: number;
@@ -132,12 +136,64 @@ function placedTextElement(): ServerElement {
     imageCaption: null,
     linkLabel: null,
     linkUrl: null,
+    projectTitleOverride: null,
+    projectDescriptionOverride: null,
+    projectHashtagsOverride: null,
+    cardLayout: null,
     x: 24,
     y: 24,
     width: 320,
     height: 160,
     zIndex: 1,
   };
+}
+
+function placedProjectElement(): ServerElement {
+  return {
+    id: "element-project",
+    type: "PROJECT",
+    projectId: "p1",
+    textContent: null,
+    imageUrl: null,
+    imageCaption: null,
+    linkLabel: null,
+    linkUrl: null,
+    projectTitleOverride: null,
+    projectDescriptionOverride: null,
+    projectHashtagsOverride: null,
+    cardLayout: null,
+    x: 24,
+    y: 24,
+    width: 320,
+    height: 240,
+    zIndex: 1,
+  };
+}
+
+const projectProps = [
+  {
+    id: "p1",
+    title: "Real Title",
+    description: "Real description",
+    category: "DESIGNER" as const,
+    hashtags: ["alpha", "beta"],
+    media: [],
+  },
+];
+
+function renderEditorWithProject() {
+  return render(
+    <CanvasEditor
+      bio={null}
+      links={[]}
+      projects={projectProps}
+      displayName="Test User"
+      username="test"
+      school={null}
+      avatarUrl={null}
+      categories={[]}
+    />,
+  );
 }
 
 function renderEditor() {
@@ -303,5 +359,66 @@ describe("the Add Component flow", () => {
 
     // Placing a first element suppresses the hint without any dismissal.
     expect(screen.queryByText("New to the canvas?")).toBeNull();
+  });
+});
+
+describe("the PROJECT card panel", () => {
+  it("Edit opens the inline panel instead of navigating to the project edit page", async () => {
+    mocks.editorState.mockReturnValue({
+      isPending: false,
+      data: baseData({ elements: [placedProjectElement()], library: [] }),
+    });
+    const user = userEvent.setup();
+    renderEditorWithProject();
+
+    await user.click(
+      screen.getByRole("button", { name: "Open menu for Project" }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: "Edit" }));
+
+    // The inline panel is shown (its controls exist) and no navigation happened.
+    expect(screen.getByLabelText("Card layout")).not.toBeNull();
+    expect(screen.getByLabelText("Override hashtags")).not.toBeNull();
+    expect(mocks.routerPush).not.toHaveBeenCalled();
+  });
+
+  it("pre-fills override fields with the real project's values as placeholders", async () => {
+    mocks.editorState.mockReturnValue({
+      isPending: false,
+      data: baseData({ elements: [placedProjectElement()], library: [] }),
+    });
+    const user = userEvent.setup();
+    renderEditorWithProject();
+
+    await user.click(
+      screen.getByRole("button", { name: "Open menu for Project" }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: "Edit" }));
+
+    expect(
+      screen.getByLabelText("Title override").getAttribute("placeholder"),
+    ).toBe("Real Title");
+    expect(
+      screen
+        .getByLabelText("Description override")
+        .getAttribute("placeholder"),
+    ).toBe("Real description");
+  });
+
+  it("offers an Edit full project link to the project's edit page", async () => {
+    mocks.editorState.mockReturnValue({
+      isPending: false,
+      data: baseData({ elements: [placedProjectElement()], library: [] }),
+    });
+    const user = userEvent.setup();
+    renderEditorWithProject();
+
+    await user.click(
+      screen.getByRole("button", { name: "Open menu for Project" }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: "Edit" }));
+
+    const link = screen.getByRole("link", { name: /Edit full project/ });
+    expect(link.getAttribute("href")).toBe("/projects/p1/edit");
   });
 });

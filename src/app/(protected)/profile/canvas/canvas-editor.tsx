@@ -14,6 +14,16 @@ import {
 import { ProjectCard } from "~/app/project-card";
 import { safeExternalUrl } from "~/app/safe-external-url";
 import {
+  applyProjectCardOverrides,
+  CARD_LAYOUTS,
+  CARD_LAYOUT_LABELS,
+  coerceHashtagsOverride,
+  DEFAULT_CARD_LAYOUT,
+  normalizeHashtags,
+  resolveCardLayout,
+  type CardLayout,
+} from "~/lib/canvas-project-card";
+import {
   CANVAS_MAX_HEIGHT,
   CANVAS_MIN_HEIGHT,
   CANVAS_MIN_WIDTH,
@@ -78,6 +88,13 @@ type EditorElement = {
   imageCaption: string | null;
   linkLabel: string | null;
   linkUrl: string | null;
+  // Canvas-only PROJECT card overrides. Null = unset (fall back to the real
+  // project value); projectHashtagsOverride === null is unset while [] is an
+  // explicit "no hashtags" override.
+  projectTitleOverride: string | null;
+  projectDescriptionOverride: string | null;
+  projectHashtagsOverride: string[] | null;
+  cardLayout: string | null;
   x: number;
   y: number;
   width: number;
@@ -100,6 +117,10 @@ type ElementPayload = {
   avatarZoom?: number;
   avatarOffsetX?: number;
   avatarOffsetY?: number;
+  projectTitleOverride?: string;
+  projectDescriptionOverride?: string;
+  projectHashtagsOverride?: string[];
+  cardLayout?: CardLayout;
   x: number;
   y: number;
   width: number;
@@ -139,7 +160,9 @@ type PanelState =
       initialUrl: string;
     }
   // Style panel targets an already-placed element (editKey always set).
-  | { kind: "STYLE"; editKey: string };
+  | { kind: "STYLE"; editKey: string }
+  // Project card panel targets an already-placed PROJECT element.
+  | { kind: "PROJECT"; editKey: string };
 
 // Freeform elements are created via Add Component, can appear any number of
 // times, and have no unplaced Library state.
@@ -232,6 +255,20 @@ function toPayload(elements: EditorElement[]): ElementPayload[] {
       type: element.type,
       ...(element.type === "PROJECT" && element.projectId
         ? { projectId: element.projectId }
+        : {}),
+      ...(element.type === "PROJECT" && element.projectTitleOverride?.trim()
+        ? { projectTitleOverride: element.projectTitleOverride }
+        : {}),
+      ...(element.type === "PROJECT" &&
+      element.projectDescriptionOverride?.trim()
+        ? { projectDescriptionOverride: element.projectDescriptionOverride }
+        : {}),
+      // Send even an empty array — presence is the unset-vs-empty distinction.
+      ...(element.type === "PROJECT" && element.projectHashtagsOverride !== null
+        ? { projectHashtagsOverride: element.projectHashtagsOverride }
+        : {}),
+      ...(element.type === "PROJECT" && element.cardLayout
+        ? { cardLayout: element.cardLayout as CardLayout }
         : {}),
       ...(element.type === "TEXT" && element.textContent
         ? { textContent: element.textContent }
@@ -346,6 +383,12 @@ export function CanvasEditor({
           avatarZoom: element.avatarZoom,
           avatarOffsetX: element.avatarOffsetX,
           avatarOffsetY: element.avatarOffsetY,
+          projectTitleOverride: element.projectTitleOverride,
+          projectDescriptionOverride: element.projectDescriptionOverride,
+          projectHashtagsOverride: coerceHashtagsOverride(
+            element.projectHashtagsOverride,
+          ),
+          cardLayout: element.cardLayout,
           x: element.x,
           y: element.y,
           width: element.width,
@@ -539,6 +582,10 @@ export function CanvasEditor({
           avatarZoom: null,
           avatarOffsetX: null,
           avatarOffsetY: null,
+          projectTitleOverride: null,
+          projectDescriptionOverride: null,
+          projectHashtagsOverride: null,
+          cardLayout: null,
           ...clamped,
           zIndex: maxZIndex(current) + 1,
         },
@@ -616,7 +663,10 @@ export function CanvasEditor({
       return;
     }
     if (element.type === "PROJECT") {
-      if (element.projectId) router.push(`/projects/${element.projectId}/edit`);
+      // Inline canvas-only editing panel, replacing the old navigate-to-
+      // project-edit-page behavior. The panel itself links to the full edit
+      // page as a secondary action.
+      if (element.projectId) setPanel({ kind: "PROJECT", editKey: element.key });
       return;
     }
     if (element.type === "TEXT") {
@@ -948,6 +998,28 @@ export function CanvasEditor({
                       patchElement(panel.editKey, patch);
                     }}
                     onDone={() => setPanel(null)}
+                  />
+                );
+              })()
+            ) : panel.kind === "PROJECT" ? (
+              (() => {
+                const target = elements.find(
+                  (item) => item.key === panel.editKey,
+                );
+                const project = target?.projectId
+                  ? projectsById.get(target.projectId)
+                  : undefined;
+                if (!target || !project) return null;
+                return (
+                  <ProjectCardPanel
+                    key={`project-${panel.editKey}`}
+                    project={project}
+                    element={target}
+                    onCancel={() => setPanel(null)}
+                    onSave={(patch) => {
+                      patchElement(panel.editKey, patch);
+                      setPanel(null);
+                    }}
                   />
                 );
               })()
@@ -1382,12 +1454,20 @@ function ElementContent({
   const project = element.projectId
     ? projectsById.get(element.projectId)
     : undefined;
-  return project ? (
-    <ProjectCard project={project} />
-  ) : (
-    <p className="text-faint p-4 font-mono text-xs uppercase">
-      Project unavailable
-    </p>
+  if (!project) {
+    return (
+      <p className="text-faint p-4 font-mono text-xs uppercase">
+        Project unavailable
+      </p>
+    );
+  }
+  const effective = applyProjectCardOverrides(project, {
+    titleOverride: element.projectTitleOverride,
+    descriptionOverride: element.projectDescriptionOverride,
+    hashtagsOverride: element.projectHashtagsOverride,
+  });
+  return (
+    <ProjectCard project={effective} layout={resolveCardLayout(element.cardLayout)} />
   );
 }
 
@@ -1915,6 +1995,137 @@ function LinkPanel({
         </p>
       ) : null}
       <PanelActions onCancel={onCancel} saveLabel="Save link" />
+    </form>
+  );
+}
+
+// Inline, canvas-only editor for a placed PROJECT card. Overrides the
+// title/description/hashtags this one placement shows and its card layout —
+// never the underlying Project. Blank title/description fall back to the real
+// project; the hashtags checkbox distinguishes "unset" (fall back) from an
+// explicit empty override (show no hashtags).
+function ProjectCardPanel({
+  project,
+  element,
+  onSave,
+  onCancel,
+}: {
+  project: EditorProject;
+  element: EditorElement;
+  onSave: (patch: Partial<EditorElement>) => void;
+  onCancel: () => void;
+}) {
+  const [title, setTitle] = useState(element.projectTitleOverride ?? "");
+  const [description, setDescription] = useState(
+    element.projectDescriptionOverride ?? "",
+  );
+  const [overrideHashtags, setOverrideHashtags] = useState(
+    element.projectHashtagsOverride !== null,
+  );
+  const [hashtagsText, setHashtagsText] = useState(
+    element.projectHashtagsOverride
+      ? element.projectHashtagsOverride.join(" ")
+      : "",
+  );
+  const [layout, setLayout] = useState<string>(
+    element.cardLayout ?? DEFAULT_CARD_LAYOUT,
+  );
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        const trimmedTitle = title.trim();
+        const trimmedDescription = description.trim();
+        onSave({
+          projectTitleOverride: trimmedTitle ? trimmedTitle : null,
+          projectDescriptionOverride: trimmedDescription
+            ? trimmedDescription
+            : null,
+          projectHashtagsOverride: overrideHashtags
+            ? normalizeHashtags(hashtagsText.split(/[\s,]+/))
+            : null,
+          cardLayout: layout === DEFAULT_CARD_LAYOUT ? null : layout,
+        });
+      }}
+    >
+      <h3 className="text-faint font-mono text-xs tracking-[0.14em] uppercase">
+        Edit project card
+      </h3>
+      <p className="text-muted mt-2 text-xs">
+        These changes apply only to this canvas placement — your actual project
+        is unchanged. Leave a field blank to show the project’s real value.
+      </p>
+      <label className="text-ink mt-3 block text-sm font-medium">
+        Title override
+        <input
+          value={title}
+          maxLength={160}
+          placeholder={project.title}
+          onChange={(event) => setTitle(event.target.value)}
+          className={panelInputClass}
+        />
+      </label>
+      <label className="text-ink mt-3 block text-sm font-medium">
+        Description override
+        <textarea
+          value={description}
+          maxLength={20_000}
+          rows={3}
+          placeholder={project.description}
+          onChange={(event) => setDescription(event.target.value)}
+          className={panelInputClass}
+        />
+      </label>
+      <div className="mt-3">
+        <label className="text-ink flex items-center gap-2 text-sm font-medium">
+          <input
+            type="checkbox"
+            aria-label="Override hashtags"
+            checked={overrideHashtags}
+            onChange={(event) => setOverrideHashtags(event.target.checked)}
+          />
+          Override hashtags
+        </label>
+        {overrideHashtags ? (
+          <input
+            aria-label="Hashtags override"
+            value={hashtagsText}
+            placeholder={project.hashtags.join(" ")}
+            onChange={(event) => setHashtagsText(event.target.value)}
+            className={panelInputClass}
+          />
+        ) : (
+          <p className="text-faint mt-1 text-xs">
+            Showing the project’s real hashtags. Check the box to override them
+            (leave the field empty to show none).
+          </p>
+        )}
+      </div>
+      <label className="text-ink mt-3 block text-sm font-medium">
+        Card layout
+        <select
+          aria-label="Card layout"
+          value={layout}
+          onChange={(event) => setLayout(event.target.value)}
+          className={panelInputClass}
+        >
+          {CARD_LAYOUTS.map((option) => (
+            <option key={option} value={option}>
+              {CARD_LAYOUT_LABELS[option]}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p className="mt-3 text-sm">
+        <Link
+          href={`/projects/${project.id}/edit`}
+          className="text-accent hover:text-accent-strong font-semibold transition-colors"
+        >
+          Edit full project →
+        </Link>
+      </p>
+      <PanelActions onCancel={onCancel} saveLabel="Save card" />
     </form>
   );
 }

@@ -804,3 +804,133 @@ describe("no cap on TEXT/IMAGE/LINK elements", () => {
     expect(rows.filter((row) => row.type === "LINK")).toHaveLength(2);
   });
 });
+
+describe("canvas project card overrides", () => {
+  type OverrideRow = {
+    type: string;
+    projectId: string | null;
+    projectTitleOverride: string | null;
+    projectDescriptionOverride: string | null;
+    projectHashtagsOverride: unknown;
+    cardLayout: string | null;
+  };
+
+  it("persists PROJECT card overrides without modifying the Project row", async () => {
+    const fixture = createMockDatabase({
+      projects: [{ id: "project-1", title: "Real title", media: [] }],
+    });
+
+    await saveCanvasDraft(
+      "user-1",
+      [
+        {
+          type: "PROJECT",
+          projectId: "project-1",
+          projectTitleOverride: "Canvas title",
+          projectDescriptionOverride: "Canvas blurb",
+          // Explicit empty-list override — must persist as [] (not unset).
+          projectHashtagsOverride: [],
+          cardLayout: "text-only",
+          x: 0,
+          y: 0,
+          width: 320,
+          height: 240,
+          zIndex: 1,
+        },
+      ],
+      fixture.database,
+    );
+
+    const row = fixture.rows()[0] as unknown as OverrideRow;
+    expect(row.projectTitleOverride).toBe("Canvas title");
+    expect(row.projectDescriptionOverride).toBe("Canvas blurb");
+    expect(row.projectHashtagsOverride).toEqual([]);
+    expect(row.cardLayout).toBe("text-only");
+
+    // The Project row itself is untouched: reading it back shows the original
+    // title, and the project delegate exposes no write path (only ownership
+    // reads via findMany), so nothing could have modified it.
+    const projectsAfter = (await fixture.mocks.project.findMany({
+      where: { userId: "user-1" },
+      select: { id: true, title: true },
+    })) as Array<{ id: string; title: string }>;
+    expect(projectsAfter).toHaveLength(1);
+    expect(projectsAfter[0]?.id).toBe("project-1");
+    expect(projectsAfter[0]?.title).toBe("Real title");
+    expect(fixture.mocks.project.findMany).toHaveBeenCalled();
+    expect(
+      (fixture.mocks.project as Record<string, unknown>).update,
+    ).toBeUndefined();
+  });
+
+  it("normalizes a hashtags override the same way project hashtags are normalized", async () => {
+    const fixture = createMockDatabase({
+      projects: [{ id: "project-1", title: "Real", media: [] }],
+    });
+
+    await saveCanvasDraft(
+      "user-1",
+      [
+        {
+          type: "PROJECT",
+          projectId: "project-1",
+          projectHashtagsOverride: ["#Foo", "Bar", "foo"],
+          x: 0,
+          y: 0,
+          width: 320,
+          height: 240,
+          zIndex: 1,
+        },
+      ],
+      fixture.database,
+    );
+
+    const row = fixture.rows()[0] as unknown as OverrideRow;
+    expect(row.projectHashtagsOverride).toEqual(["foo", "bar"]);
+  });
+
+  it("rejects project card overrides on a non-PROJECT element", () => {
+    const result = canvasElementInputSchema.safeParse({
+      type: "TEXT",
+      textContent: "<p>hi</p>",
+      cardLayout: "text-only",
+      x: 0,
+      y: 0,
+      width: 200,
+      height: 80,
+      zIndex: 1,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("removes a deleted project's placement and its overrides with no orphan", async () => {
+    const fixture = createMockDatabase({
+      projects: [{ id: "project-1", title: "Real", media: [] }],
+    });
+
+    await saveCanvasDraft(
+      "user-1",
+      [
+        {
+          type: "PROJECT",
+          projectId: "project-1",
+          projectTitleOverride: "Canvas title",
+          projectHashtagsOverride: ["keep"],
+          cardLayout: "media-left",
+          x: 0,
+          y: 0,
+          width: 320,
+          height: 240,
+          zIndex: 1,
+        },
+      ],
+      fixture.database,
+    );
+    expect(fixture.rows()).toHaveLength(1);
+
+    await deleteProject("project-1", "user-1", fixture.mocks.project as never);
+
+    // The FK cascade removed the row (and its override columns) — no orphan.
+    expect(fixture.rows()).toHaveLength(0);
+  });
+});

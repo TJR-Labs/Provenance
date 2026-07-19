@@ -192,6 +192,15 @@ model CanvasElement {
   avatarZoom      Int?
   avatarOffsetX   Int?
   avatarOffsetY   Int?
+  // Canvas-only overrides for a placed PROJECT element. Each is scoped to this
+  // one CanvasElement row and never touches the underlying Project record.
+  // Null = unset (fall back to the real project value). For hashtags, a Json
+  // column distinguishes unset (SQL NULL) from an explicit empty-list override
+  // (`[]`), which a nullable String[] cannot express.
+  projectTitleOverride       String?
+  projectDescriptionOverride String?
+  projectHashtagsOverride    Json?
+  cardLayout                 String?
 
   @@index([userId, state])
 }
