@@ -13,7 +13,20 @@ import {
   CANVAS_MIN_WIDTH,
   CANVAS_WIDTH,
 } from "~/lib/canvas-constants";
+import {
+  AVATAR_OFFSET_MAX,
+  AVATAR_OFFSET_MIN,
+  AVATAR_SHAPES,
+  AVATAR_ZOOM_MAX,
+  AVATAR_ZOOM_MIN,
+  CANVAS_FONT_IDS,
+  clampInt,
+  isSafeCanvasColor,
+  STYLEABLE_TYPES,
+} from "~/lib/canvas-style";
 import { db } from "~/server/db";
+
+const STYLEABLE_TYPE_SET = new Set<string>(STYLEABLE_TYPES);
 
 // Allowlist for user-authored rich text (Text elements): formatting and
 // links only — no scripts, iframes, images, or arbitrary attributes.
@@ -40,13 +53,32 @@ export function sanitizeCanvasText(html: string): string {
 
 export const canvasElementInputSchema = z
   .object({
-    type: z.enum(["ABOUT", "LINKS", "PROJECT", "TEXT", "IMAGE", "LINK"]),
+    type: z.enum([
+      "ABOUT",
+      "LINKS",
+      "PROJECT",
+      "TEXT",
+      "IMAGE",
+      "LINK",
+      "AVATAR",
+      "NAME",
+      "USERNAME",
+      "CATEGORIES",
+    ]),
     projectId: z.string().min(1).optional(),
     textContent: z.string().min(1).optional(),
     imageUrl: z.string().min(1).optional(),
     imageCaption: z.string().optional(),
     linkLabel: z.string().min(1).optional(),
     linkUrl: z.string().min(1).optional(),
+    // Per-element style (nullable columns, following textContent/imageUrl).
+    textColor: z.string().optional(),
+    backgroundColor: z.string().optional(),
+    fontFamily: z.enum(CANVAS_FONT_IDS).optional(),
+    avatarShape: z.enum(AVATAR_SHAPES).optional(),
+    avatarZoom: z.number().int().optional(),
+    avatarOffsetX: z.number().int().optional(),
+    avatarOffsetY: z.number().int().optional(),
     x: z.number().int(),
     y: z.number().int(),
     width: z.number().int(),
@@ -54,6 +86,49 @@ export const canvasElementInputSchema = z
     zIndex: z.number().int(),
   })
   .superRefine((element, context) => {
+    // Style panel fields (color/background/font) are only valid on the six
+    // styleable types; avatar framing/zoom fields only on AVATAR.
+    const hasTextStyle =
+      element.textColor !== undefined ||
+      element.backgroundColor !== undefined ||
+      element.fontFamily !== undefined;
+    if (hasTextStyle && !STYLEABLE_TYPE_SET.has(element.type)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Style is only valid for styleable elements.",
+        path: ["textColor"],
+      });
+    }
+    if (element.textColor && !isSafeCanvasColor(element.textColor)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "textColor must be a hex color or transparent.",
+        path: ["textColor"],
+      });
+    }
+    if (
+      element.backgroundColor &&
+      !isSafeCanvasColor(element.backgroundColor)
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "backgroundColor must be a hex color or transparent.",
+        path: ["backgroundColor"],
+      });
+    }
+    const hasAvatarStyle =
+      element.avatarShape !== undefined ||
+      element.avatarZoom !== undefined ||
+      element.avatarOffsetX !== undefined ||
+      element.avatarOffsetY !== undefined;
+    if (hasAvatarStyle && element.type !== "AVATAR") {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Avatar framing is only valid for avatar elements.",
+        path: ["avatarShape"],
+      });
+    }
+
     if (element.type === "PROJECT" && !element.projectId) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
@@ -132,7 +207,14 @@ export type CanvasElementInput = z.infer<typeof canvasElementInputSchema>;
 
 const validatedCanvasElementsSchema = saveCanvasElementsInputSchema.superRefine(
   (elements, context) => {
-    for (const type of ["ABOUT", "LINKS"] as const) {
+    for (const type of [
+      "ABOUT",
+      "LINKS",
+      "AVATAR",
+      "NAME",
+      "USERNAME",
+      "CATEGORIES",
+    ] as const) {
       if (elements.filter((element) => element.type === type).length > 1) {
         context.addIssue({
           code: z.ZodIssueCode.custom,
@@ -180,6 +262,33 @@ function clampElements(elements: CanvasElementInput[]) {
       ...(element.type === "TEXT" && element.textContent
         ? { textContent: sanitizeCanvasText(element.textContent) }
         : {}),
+      ...(element.avatarZoom !== undefined
+        ? {
+            avatarZoom: clampInt(
+              element.avatarZoom,
+              AVATAR_ZOOM_MIN,
+              AVATAR_ZOOM_MAX,
+            ),
+          }
+        : {}),
+      ...(element.avatarOffsetX !== undefined
+        ? {
+            avatarOffsetX: clampInt(
+              element.avatarOffsetX,
+              AVATAR_OFFSET_MIN,
+              AVATAR_OFFSET_MAX,
+            ),
+          }
+        : {}),
+      ...(element.avatarOffsetY !== undefined
+        ? {
+            avatarOffsetY: clampInt(
+              element.avatarOffsetY,
+              AVATAR_OFFSET_MIN,
+              AVATAR_OFFSET_MAX,
+            ),
+          }
+        : {}),
     };
   });
 }
@@ -205,6 +314,15 @@ function createRows(
       element.type === "IMAGE" ? (element.imageCaption ?? null) : null,
     linkLabel: element.type === "LINK" ? (element.linkLabel ?? null) : null,
     linkUrl: element.type === "LINK" ? (element.linkUrl ?? null) : null,
+    textColor: element.textColor ?? null,
+    backgroundColor: element.backgroundColor ?? null,
+    fontFamily: element.fontFamily ?? null,
+    avatarShape: element.type === "AVATAR" ? (element.avatarShape ?? null) : null,
+    avatarZoom: element.type === "AVATAR" ? (element.avatarZoom ?? null) : null,
+    avatarOffsetX:
+      element.type === "AVATAR" ? (element.avatarOffsetX ?? null) : null,
+    avatarOffsetY:
+      element.type === "AVATAR" ? (element.avatarOffsetY ?? null) : null,
   }));
 }
 
@@ -233,24 +351,60 @@ async function validateAndClampElements(
 
 function startingLayout(projects: { id: string }[]): CanvasElementInput[] {
   const projectWidth = Math.floor((CANVAS_WIDTH - 24) / 2);
-  const projectStartY = 280 + 160 + 24;
+  // Identity header band occupies the top 160px (avatar column on the left,
+  // name/username/categories stacked to its right); About/Links/Projects are
+  // shifted down below it. Categories are only auto-placed when the user has
+  // at least one project, since categories are derived per-project.
+  const hasCategories = projects.length > 0;
+  const headerOffset = 184;
+  const nameX = 184;
+  const nameWidth = CANVAS_WIDTH - nameX;
+  const aboutY = headerOffset;
+  const linksY = aboutY + 280;
+  const projectStartY = linksY + 160 + 24;
+
+  const identity: CanvasElementInput[] = [
+    { type: "AVATAR", x: 0, y: 0, width: 160, height: 160, zIndex: 1 },
+    { type: "NAME", x: nameX, y: 0, width: nameWidth, height: 64, zIndex: 2 },
+    {
+      type: "USERNAME",
+      x: nameX,
+      y: 72,
+      width: nameWidth,
+      height: 40,
+      zIndex: 3,
+    },
+    ...(hasCategories
+      ? [
+          {
+            type: "CATEGORIES" as const,
+            x: nameX,
+            y: 120,
+            width: nameWidth,
+            height: 40,
+            zIndex: 4,
+          },
+        ]
+      : []),
+  ];
 
   return [
+    ...identity,
     {
       type: "ABOUT",
       x: 0,
-      y: 0,
+      y: aboutY,
       width: CANVAS_WIDTH,
       height: 280,
-      zIndex: 1,
+      zIndex: 5,
     },
     {
       type: "LINKS",
       x: 0,
-      y: 280,
+      y: linksY,
       width: CANVAS_WIDTH,
       height: 160,
-      zIndex: 2,
+      zIndex: 6,
     },
     ...projects.map((project, index) => ({
       type: "PROJECT" as const,
@@ -259,7 +413,7 @@ function startingLayout(projects: { id: string }[]): CanvasElementInput[] {
       y: projectStartY + Math.floor(index / 2) * (320 + 24),
       width: projectWidth,
       height: 320,
-      zIndex: index + 3,
+      zIndex: index + 7,
     })),
   ];
 }
@@ -366,6 +520,10 @@ export async function getCanvasEditorState(
     },
     elements,
     library: [
+      { type: "AVATAR" as const, placed: placedTypes.has("AVATAR") },
+      { type: "NAME" as const, placed: placedTypes.has("NAME") },
+      { type: "USERNAME" as const, placed: placedTypes.has("USERNAME") },
+      { type: "CATEGORIES" as const, placed: placedTypes.has("CATEGORIES") },
       { type: "ABOUT" as const, placed: placedTypes.has("ABOUT") },
       { type: "LINKS" as const, placed: placedTypes.has("LINKS") },
       ...projects.map((project) => ({

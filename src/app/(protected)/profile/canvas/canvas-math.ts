@@ -13,7 +13,16 @@ export type CanvasBounds = {
 };
 
 export const DEFAULT_ELEMENT_SIZE: Record<
-  "ABOUT" | "LINKS" | "PROJECT" | "TEXT" | "IMAGE" | "LINK",
+  | "ABOUT"
+  | "LINKS"
+  | "PROJECT"
+  | "TEXT"
+  | "IMAGE"
+  | "LINK"
+  | "AVATAR"
+  | "NAME"
+  | "USERNAME"
+  | "CATEGORIES",
   { width: number; height: number }
 > = {
   ABOUT: { width: 400, height: 240 },
@@ -22,6 +31,10 @@ export const DEFAULT_ELEMENT_SIZE: Record<
   TEXT: { width: 320, height: 160 },
   IMAGE: { width: 320, height: 240 },
   LINK: { width: 280, height: 72 },
+  AVATAR: { width: 160, height: 160 },
+  NAME: { width: 320, height: 64 },
+  USERNAME: { width: 300, height: 48 },
+  CATEGORIES: { width: 400, height: 56 },
 };
 
 function clamp(value: number, minimum: number, maximum: number) {

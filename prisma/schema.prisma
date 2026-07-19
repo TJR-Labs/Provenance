@@ -47,6 +47,10 @@ enum CanvasElementType {
   TEXT
   IMAGE
   LINK
+  AVATAR
+  NAME
+  USERNAME
+  CATEGORIES
 }
 
 enum CanvasElementState {
@@ -181,6 +185,13 @@ model CanvasElement {
   imageCaption String?
   linkLabel    String?
   linkUrl      String?
+  textColor       String?
+  backgroundColor String?
+  fontFamily      String?
+  avatarShape     String?
+  avatarZoom      Int?
+  avatarOffsetX   Int?
+  avatarOffsetY   Int?
 
   @@index([userId, state])
 }

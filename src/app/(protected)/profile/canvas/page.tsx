@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { getServerCaller } from "~/server/api/caller";
+import { categoryLabels } from "~/server/categories";
 import { CanvasEditor } from "./canvas-editor";
 import { LayoutModeToggle } from "./layout-mode-toggle";
 
@@ -29,6 +30,12 @@ export default async function CanvasEditorPage() {
   const projects = isCanvas
     ? await caller.project.listByUsername({ username: profile.username })
     : [];
+
+  // Category badge labels are derived per-project, matching the fixed header /
+  // getPublicProfile — the Categories element is read-only and follows this.
+  const categoryLabelList = [
+    ...new Set(projects.map((project) => project.category)),
+  ].map((category) => categoryLabels[category]);
 
   return (
     <section
@@ -65,6 +72,11 @@ export default async function CanvasEditorPage() {
         <CanvasEditor
           bio={profile.bio}
           links={readLinks(profile.links)}
+          displayName={profile.displayName}
+          username={profile.username}
+          school={profile.school}
+          avatarUrl={profile.avatarUrl}
+          categories={categoryLabelList}
           projects={projects.map((project) => ({
             id: project.id,
             title: project.title,

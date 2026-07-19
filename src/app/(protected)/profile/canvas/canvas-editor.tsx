@@ -19,6 +19,21 @@ import {
   CANVAS_MIN_WIDTH,
   CANVAS_WIDTH,
 } from "~/lib/canvas-constants";
+import {
+  AVATAR_OFFSET_DEFAULT,
+  AVATAR_OFFSET_MAX,
+  AVATAR_OFFSET_MIN,
+  AVATAR_SHAPES,
+  AVATAR_ZOOM_DEFAULT,
+  AVATAR_ZOOM_MAX,
+  AVATAR_ZOOM_MIN,
+  avatarShapeRadius,
+  CANVAS_FONTS,
+  fontStack,
+  STYLEABLE_TYPES,
+  type AvatarShape,
+  type CanvasFontId,
+} from "~/lib/canvas-style";
 import { api } from "~/trpc/react";
 import { AUTOSAVE_INTERVAL_MS, createAutosaveController } from "./autosave";
 import {
@@ -32,7 +47,27 @@ import {
 
 type EditorProject = ComponentProps<typeof ProjectCard>["project"];
 type ProfileLink = { label: string; url: string };
-type ElementType = "ABOUT" | "LINKS" | "PROJECT" | "TEXT" | "IMAGE" | "LINK";
+type ElementType =
+  | "ABOUT"
+  | "LINKS"
+  | "PROJECT"
+  | "TEXT"
+  | "IMAGE"
+  | "LINK"
+  | "AVATAR"
+  | "NAME"
+  | "USERNAME"
+  | "CATEGORIES";
+
+type ElementStyle = {
+  textColor: string | null;
+  backgroundColor: string | null;
+  fontFamily: string | null;
+  avatarShape: string | null;
+  avatarZoom: number | null;
+  avatarOffsetX: number | null;
+  avatarOffsetY: number | null;
+};
 
 type EditorElement = {
   key: string;
@@ -48,7 +83,7 @@ type EditorElement = {
   width: number;
   height: number;
   zIndex: number;
-};
+} & ElementStyle;
 
 type ElementPayload = {
   type: ElementType;
@@ -58,12 +93,21 @@ type ElementPayload = {
   imageCaption?: string;
   linkLabel?: string;
   linkUrl?: string;
+  textColor?: string;
+  backgroundColor?: string;
+  fontFamily?: CanvasFontId;
+  avatarShape?: AvatarShape;
+  avatarZoom?: number;
+  avatarOffsetX?: number;
+  avatarOffsetY?: number;
   x: number;
   y: number;
   width: number;
   height: number;
   zIndex: number;
 };
+
+const STYLEABLE_TYPE_SET = new Set<ElementType>(STYLEABLE_TYPES);
 
 type DragState = {
   key: string;
@@ -93,7 +137,9 @@ type PanelState =
       editKey: string | null;
       initialLabel: string;
       initialUrl: string;
-    };
+    }
+  // Style panel targets an already-placed element (editKey always set).
+  | { kind: "STYLE"; editKey: string };
 
 // Freeform elements are created via Add Component, can appear any number of
 // times, and have no unplaced Library state.
@@ -136,6 +182,12 @@ type CanvasEditorProps = {
   bio: string | null;
   links: ProfileLink[];
   projects: EditorProject[];
+  displayName: string;
+  username: string;
+  school: string | null;
+  avatarUrl: string | null;
+  // Pre-resolved category display labels (derived from the user's projects).
+  categories: string[];
 };
 
 const FALLBACK_BOUNDS: CanvasBounds = {
@@ -154,39 +206,89 @@ const elementLabels: Record<ElementType, string> = {
   TEXT: "Text",
   IMAGE: "Image",
   LINK: "Link",
+  AVATAR: "Avatar",
+  NAME: "Name",
+  USERNAME: "Username",
+  CATEGORIES: "Categories",
 };
 
+// Inline style applied to a styled element's rendered content in the editor
+// preview. Mirrors the public-profile renderer so the editor shows what will
+// publish. Background "transparent" is honored; unset falls through to the
+// element chrome's default surface.
+function contentStyle(element: EditorElement): React.CSSProperties {
+  const style: React.CSSProperties = {};
+  if (element.textColor) style.color = element.textColor;
+  if (element.backgroundColor) style.backgroundColor = element.backgroundColor;
+  const stack = fontStack(element.fontFamily);
+  if (stack) style.fontFamily = stack;
+  return style;
+}
+
 function toPayload(elements: EditorElement[]): ElementPayload[] {
-  return elements.map((element) => ({
-    type: element.type,
-    ...(element.type === "PROJECT" && element.projectId
-      ? { projectId: element.projectId }
-      : {}),
-    ...(element.type === "TEXT" && element.textContent
-      ? { textContent: element.textContent }
-      : {}),
-    ...(element.type === "IMAGE" && element.imageUrl
-      ? {
-          imageUrl: element.imageUrl,
-          ...(element.imageCaption ? { imageCaption: element.imageCaption } : {}),
-        }
-      : {}),
-    ...(element.type === "LINK" && element.linkLabel && element.linkUrl
-      ? { linkLabel: element.linkLabel, linkUrl: element.linkUrl }
-      : {}),
-    x: element.x,
-    y: element.y,
-    width: element.width,
-    height: element.height,
-    zIndex: element.zIndex,
-  }));
+  return elements.map((element) => {
+    const styleable = STYLEABLE_TYPE_SET.has(element.type);
+    return {
+      type: element.type,
+      ...(element.type === "PROJECT" && element.projectId
+        ? { projectId: element.projectId }
+        : {}),
+      ...(element.type === "TEXT" && element.textContent
+        ? { textContent: element.textContent }
+        : {}),
+      ...(element.type === "IMAGE" && element.imageUrl
+        ? {
+            imageUrl: element.imageUrl,
+            ...(element.imageCaption
+              ? { imageCaption: element.imageCaption }
+              : {}),
+          }
+        : {}),
+      ...(element.type === "LINK" && element.linkLabel && element.linkUrl
+        ? { linkLabel: element.linkLabel, linkUrl: element.linkUrl }
+        : {}),
+      ...(styleable && element.textColor ? { textColor: element.textColor } : {}),
+      ...(styleable && element.backgroundColor
+        ? { backgroundColor: element.backgroundColor }
+        : {}),
+      ...(styleable && element.fontFamily
+        ? { fontFamily: element.fontFamily as CanvasFontId }
+        : {}),
+      ...(element.type === "AVATAR" && element.avatarShape
+        ? { avatarShape: element.avatarShape as AvatarShape }
+        : {}),
+      ...(element.type === "AVATAR" && element.avatarZoom !== null
+        ? { avatarZoom: element.avatarZoom }
+        : {}),
+      ...(element.type === "AVATAR" && element.avatarOffsetX !== null
+        ? { avatarOffsetX: element.avatarOffsetX }
+        : {}),
+      ...(element.type === "AVATAR" && element.avatarOffsetY !== null
+        ? { avatarOffsetY: element.avatarOffsetY }
+        : {}),
+      x: element.x,
+      y: element.y,
+      width: element.width,
+      height: element.height,
+      zIndex: element.zIndex,
+    };
+  });
 }
 
 function maxZIndex(elements: EditorElement[]) {
   return elements.reduce((max, element) => Math.max(max, element.zIndex), 0);
 }
 
-export function CanvasEditor({ bio, links, projects }: CanvasEditorProps) {
+export function CanvasEditor({
+  bio,
+  links,
+  projects,
+  displayName,
+  username,
+  school,
+  avatarUrl,
+  categories,
+}: CanvasEditorProps) {
   const router = useRouter();
   const editorState = api.canvas.getEditorState.useQuery(undefined, {
     refetchOnWindowFocus: false,
@@ -237,6 +339,13 @@ export function CanvasEditor({ bio, links, projects }: CanvasEditorProps) {
           imageCaption: element.imageCaption,
           linkLabel: element.linkLabel,
           linkUrl: element.linkUrl,
+          textColor: element.textColor,
+          backgroundColor: element.backgroundColor,
+          fontFamily: element.fontFamily,
+          avatarShape: element.avatarShape,
+          avatarZoom: element.avatarZoom,
+          avatarOffsetX: element.avatarOffsetX,
+          avatarOffsetY: element.avatarOffsetY,
           x: element.x,
           y: element.y,
           width: element.width,
@@ -423,6 +532,13 @@ export function CanvasEditor({ bio, links, projects }: CanvasEditorProps) {
           imageCaption: item.imageCaption ?? null,
           linkLabel: item.linkLabel ?? null,
           linkUrl: item.linkUrl ?? null,
+          textColor: null,
+          backgroundColor: null,
+          fontFamily: null,
+          avatarShape: null,
+          avatarZoom: null,
+          avatarOffsetX: null,
+          avatarOffsetY: null,
           ...clamped,
           zIndex: maxZIndex(current) + 1,
         },
@@ -484,8 +600,18 @@ export function CanvasEditor({ bio, links, projects }: CanvasEditorProps) {
   }
 
   function handleEdit(element: EditorElement) {
-    if (element.type === "ABOUT" || element.type === "LINKS") {
-      // The autosave controller's unmount cleanup flushes pending changes.
+    if (
+      element.type === "ABOUT" ||
+      element.type === "LINKS" ||
+      element.type === "AVATAR" ||
+      element.type === "NAME" ||
+      element.type === "USERNAME" ||
+      element.type === "CATEGORIES"
+    ) {
+      // Identity elements derive their content from the profile; Edit sends
+      // the user to /profile/edit (displayName/avatarUrl live there; username
+      // and categories aren't directly editable). The autosave controller's
+      // unmount cleanup flushes pending changes.
       router.push("/profile/edit");
       return;
     }
@@ -613,18 +739,31 @@ export function CanvasEditor({ bio, links, projects }: CanvasEditorProps) {
     } catch {
       return;
     }
-    if (
-      item.type !== "ABOUT" &&
-      item.type !== "LINKS" &&
-      item.type !== "PROJECT"
-    ) {
+    const DROPPABLE: ElementType[] = [
+      "ABOUT",
+      "LINKS",
+      "PROJECT",
+      "AVATAR",
+      "NAME",
+      "USERNAME",
+      "CATEGORIES",
+    ];
+    if (!DROPPABLE.includes(item.type as ElementType)) {
       return;
     }
+    const droppedType = item.type as
+      | "ABOUT"
+      | "LINKS"
+      | "PROJECT"
+      | "AVATAR"
+      | "NAME"
+      | "USERNAME"
+      | "CATEGORIES";
 
     const rect = surface.getBoundingClientRect();
-    const size = DEFAULT_ELEMENT_SIZE[item.type];
+    const size = DEFAULT_ELEMENT_SIZE[droppedType];
     addElement(
-      { type: item.type, projectId: item.projectId },
+      { type: droppedType, projectId: item.projectId },
       Math.round(event.clientX - rect.left - size.width / 2),
       Math.round(event.clientY - rect.top - size.height / 2),
     );
@@ -794,7 +933,25 @@ export function CanvasEditor({ bio, links, projects }: CanvasEditorProps) {
 
       {panel ? (
         <div className="border-line bg-surface mt-4 rounded-lg border p-4">
-            {panel.kind === "TEXT" ? (
+            {panel.kind === "STYLE" ? (
+              (() => {
+                const target = elements.find(
+                  (item) => item.key === panel.editKey,
+                );
+                if (!target) return null;
+                return (
+                  <StylePanel
+                    key={`style-${panel.editKey}`}
+                    element={target}
+                    onCancel={() => setPanel(null)}
+                    onApply={(patch) => {
+                      patchElement(panel.editKey, patch);
+                    }}
+                    onDone={() => setPanel(null)}
+                  />
+                );
+              })()
+            ) : panel.kind === "TEXT" ? (
               <TextPanel
                 key={`text-${panel.editKey ?? "new"}`}
                 heading={panel.editKey ? "Edit text" : "Add text"}
@@ -920,11 +1077,11 @@ export function CanvasEditor({ bio, links, projects }: CanvasEditorProps) {
                   </li>
                 );
               })}
-              {library.length === 2 ? (
+              {library.some((item) => item.type === "PROJECT") ? null : (
                 <li className="text-faint px-1 py-2 text-xs">
                   No projects yet — new projects appear here as unplaced.
                 </li>
-              ) : null}
+              )}
             </ul>
           </aside>
 
@@ -964,12 +1121,20 @@ export function CanvasEditor({ bio, links, projects }: CanvasEditorProps) {
                   {/* Content is inert while editing so drags never fight
                       links/buttons inside; dense content clips (spec allows
                       clip/scroll at small sizes). */}
-                  <div className="pointer-events-none h-full w-full overflow-hidden select-none">
+                  <div
+                    className="pointer-events-none h-full w-full overflow-hidden select-none"
+                    style={contentStyle(element)}
+                  >
                     <ElementContent
                       element={element}
                       bio={bio}
                       links={links}
                       projectsById={projectsById}
+                      displayName={displayName}
+                      username={username}
+                      school={school}
+                      avatarUrl={avatarUrl}
+                      categories={categories}
                     />
                   </div>
                   {/* Visible entry point to the same Edit/Delete menu that
@@ -1036,6 +1201,19 @@ export function CanvasEditor({ bio, links, projects }: CanvasEditorProps) {
                 >
                   Edit
                 </button>
+                {STYLEABLE_TYPE_SET.has(element.type) ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setContextMenu(null);
+                      setPanel({ kind: "STYLE", editKey: element.key });
+                    }}
+                    className="text-ink hover:bg-raised block w-full px-3 py-1.5 text-left text-sm transition-colors"
+                  >
+                    Style
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   role="menuitem"
@@ -1060,12 +1238,73 @@ function ElementContent({
   bio,
   links,
   projectsById,
+  displayName,
+  username,
+  school,
+  avatarUrl,
+  categories,
 }: {
   element: EditorElement;
   bio: string | null;
   links: ProfileLink[];
   projectsById: Map<string, EditorProject>;
+  displayName: string;
+  username: string;
+  school: string | null;
+  avatarUrl: string | null;
+  categories: string[];
 }) {
+  if (element.type === "AVATAR") {
+    return (
+      <AvatarContent
+        avatarUrl={avatarUrl}
+        displayName={displayName}
+        shape={element.avatarShape}
+        zoom={element.avatarZoom}
+        offsetX={element.avatarOffsetX}
+        offsetY={element.avatarOffsetY}
+      />
+    );
+  }
+  if (element.type === "NAME") {
+    return (
+      <div className="flex h-full items-center p-4">
+        <span className="font-display text-2xl font-semibold tracking-tight break-words">
+          {displayName}
+        </span>
+      </div>
+    );
+  }
+  if (element.type === "USERNAME") {
+    return (
+      <div className="flex h-full items-center p-4">
+        <span className="font-mono text-sm break-words">
+          @{username}
+          {school ? ` · ${school}` : ""}
+        </span>
+      </div>
+    );
+  }
+  if (element.type === "CATEGORIES") {
+    return (
+      <div className="p-4">
+        {categories.length ? (
+          <div className="flex flex-wrap gap-2">
+            {categories.map((label) => (
+              <span
+                key={label}
+                className="bg-raised rounded-full px-3 py-1 text-sm"
+              >
+                {label}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className="profile-muted text-muted text-sm">No categories yet.</p>
+        )}
+      </div>
+    );
+  }
   if (element.type === "ABOUT") {
     return (
       <div className="p-4">
@@ -1149,6 +1388,227 @@ function ElementContent({
     <p className="text-faint p-4 font-mono text-xs uppercase">
       Project unavailable
     </p>
+  );
+}
+
+// Avatar element preview: renders the uploaded/URL image within the chosen
+// frame shape, honoring zoom (background-size) and position (background-
+// position). Falls back to the initials tile when no avatar image is set.
+function AvatarContent({
+  avatarUrl,
+  displayName,
+  shape,
+  zoom,
+  offsetX,
+  offsetY,
+}: {
+  avatarUrl: string | null;
+  displayName: string;
+  shape: string | null;
+  zoom: number | null;
+  offsetX: number | null;
+  offsetY: number | null;
+}) {
+  const radius = avatarShapeRadius(shape);
+  if (!avatarUrl) {
+    return (
+      <div className="flex h-full w-full items-center justify-center p-2">
+        <div
+          className="border-line-strong bg-raised font-display text-ink flex h-full w-full items-center justify-center border text-4xl font-semibold"
+          style={{ borderRadius: radius }}
+        >
+          {displayName.slice(0, 1).toUpperCase()}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="flex h-full w-full items-center justify-center p-2">
+      <div
+        className="border-line-strong h-full w-full border"
+        style={{
+          borderRadius: radius,
+          backgroundImage: `url(${JSON.stringify(avatarUrl)})`,
+          backgroundSize: `${zoom ?? AVATAR_ZOOM_DEFAULT}%`,
+          backgroundPosition: `${offsetX ?? AVATAR_OFFSET_DEFAULT}% ${
+            offsetY ?? AVATAR_OFFSET_DEFAULT
+          }%`,
+          backgroundRepeat: "no-repeat",
+        }}
+      />
+    </div>
+  );
+}
+
+const swatchClass =
+  "h-8 w-8 shrink-0 cursor-pointer rounded-md border-0 bg-transparent p-0";
+
+// Per-element style editor: text color, background (color or transparent), and
+// a curated font. AVATAR additionally gets frame shape and image zoom/position.
+// Changes apply live via onApply so the canvas preview updates as you edit.
+function StylePanel({
+  element,
+  onApply,
+  onCancel,
+  onDone,
+}: {
+  element: EditorElement;
+  onApply: (patch: Partial<EditorElement>) => void;
+  onCancel: () => void;
+  onDone: () => void;
+}) {
+  const isAvatar = element.type === "AVATAR";
+  return (
+    <div>
+      <h3 className="text-faint font-mono text-xs tracking-[0.14em] uppercase">
+        Style {elementLabels[element.type]}
+      </h3>
+      <div className="mt-3 grid gap-4 sm:grid-cols-2">
+        <label className="text-ink flex items-center justify-between gap-3 text-sm font-medium">
+          Text color
+          <span className="flex items-center gap-2">
+            <input
+              type="color"
+              aria-label="Text color"
+              value={element.textColor ?? "#000000"}
+              onChange={(event) => onApply({ textColor: event.target.value })}
+              className={swatchClass}
+            />
+            <button
+              type="button"
+              onClick={() => onApply({ textColor: null })}
+              className="text-muted hover:text-ink text-xs underline-offset-2 hover:underline"
+            >
+              Reset
+            </button>
+          </span>
+        </label>
+        <label className="text-ink flex items-center justify-between gap-3 text-sm font-medium">
+          Background
+          <span className="flex items-center gap-2">
+            <input
+              type="color"
+              aria-label="Background color"
+              value={
+                element.backgroundColor && element.backgroundColor !== "transparent"
+                  ? element.backgroundColor
+                  : "#ffffff"
+              }
+              onChange={(event) =>
+                onApply({ backgroundColor: event.target.value })
+              }
+              className={swatchClass}
+            />
+            <button
+              type="button"
+              onClick={() => onApply({ backgroundColor: "transparent" })}
+              className="text-muted hover:text-ink text-xs underline-offset-2 hover:underline"
+            >
+              Transparent
+            </button>
+          </span>
+        </label>
+        <label className="text-ink block text-sm font-medium sm:col-span-2">
+          Font
+          <select
+            aria-label="Font"
+            value={element.fontFamily ?? ""}
+            onChange={(event) =>
+              onApply({ fontFamily: event.target.value || null })
+            }
+            className={panelInputClass}
+          >
+            <option value="">Default</option>
+            {CANVAS_FONTS.map((font) => (
+              <option key={font.id} value={font.id}>
+                {font.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {isAvatar ? (
+        <div className="border-line mt-4 grid gap-4 border-t pt-4 sm:grid-cols-2">
+          <label className="text-ink block text-sm font-medium">
+            Frame shape
+            <select
+              aria-label="Frame shape"
+              value={element.avatarShape ?? "circle"}
+              onChange={(event) =>
+                onApply({ avatarShape: event.target.value })
+              }
+              className={panelInputClass}
+            >
+              {AVATAR_SHAPES.map((shape) => (
+                <option key={shape} value={shape}>
+                  {shape[0]!.toUpperCase() + shape.slice(1)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-ink block text-sm font-medium">
+            Zoom
+            <input
+              type="range"
+              aria-label="Zoom"
+              min={AVATAR_ZOOM_MIN}
+              max={AVATAR_ZOOM_MAX}
+              value={element.avatarZoom ?? AVATAR_ZOOM_DEFAULT}
+              onChange={(event) =>
+                onApply({ avatarZoom: Number(event.target.value) })
+              }
+              className="mt-2 block w-full"
+            />
+          </label>
+          <label className="text-ink block text-sm font-medium">
+            Position X
+            <input
+              type="range"
+              aria-label="Position X"
+              min={AVATAR_OFFSET_MIN}
+              max={AVATAR_OFFSET_MAX}
+              value={element.avatarOffsetX ?? AVATAR_OFFSET_DEFAULT}
+              onChange={(event) =>
+                onApply({ avatarOffsetX: Number(event.target.value) })
+              }
+              className="mt-2 block w-full"
+            />
+          </label>
+          <label className="text-ink block text-sm font-medium">
+            Position Y
+            <input
+              type="range"
+              aria-label="Position Y"
+              min={AVATAR_OFFSET_MIN}
+              max={AVATAR_OFFSET_MAX}
+              value={element.avatarOffsetY ?? AVATAR_OFFSET_DEFAULT}
+              onChange={(event) =>
+                onApply({ avatarOffsetY: Number(event.target.value) })
+              }
+              className="mt-2 block w-full"
+            />
+          </label>
+        </div>
+      ) : null}
+
+      <div className="mt-4 flex items-center gap-3">
+        <button
+          type="button"
+          onClick={onDone}
+          className="bg-accent text-on-accent hover:bg-accent-strong rounded-md px-4 py-2 text-sm font-semibold transition-colors"
+        >
+          Done
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="text-muted hover:text-ink text-sm font-medium transition-colors"
+        >
+          Close
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -1274,7 +1734,11 @@ function TextPanel({
         // The author's own draft HTML (already server-sanitized when it came
         // from a stored element).
         dangerouslySetInnerHTML={{ __html: initialHtml }}
-        className="border-line-strong bg-canvas text-ink focus:border-accent mt-2 min-h-32 rounded-md border px-3 py-2 text-sm leading-6 break-words outline-none [&_a]:underline [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5"
+        // Canvas text-entry surface: transparent background with a dotted
+        // outline showing the fillable bounds (spec Requirement 8), so editing
+        // matches how the text will render once published rather than looking
+        // like a solid-bordered form control.
+        className="border-line-strong focus:border-accent mt-2 min-h-32 rounded-md border border-dotted bg-transparent px-3 py-2 text-sm leading-6 break-words text-inherit outline-none [&_a]:underline [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5"
       />
       {error ? (
         <p role="alert" className="text-danger mt-2 text-sm">

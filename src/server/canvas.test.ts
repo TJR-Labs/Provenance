@@ -208,10 +208,17 @@ describe("portfolio canvas", () => {
     await setLayoutMode("user-1", "CANVAS", fixture.database);
 
     const rows = fixture.rows();
-    expect(rows).toHaveLength(4);
+    // Identity elements (Avatar, Name, Username, Categories) are auto-placed
+    // above/alongside About/Links/Project on first canvas entry. Categories is
+    // included because the user has at least one project (spec Requirement 4).
+    expect(rows).toHaveLength(8);
     expect(rows.every((row) => row.state === "DRAFT")).toBe(true);
     expect(rows.some((row) => row.state === "PUBLISHED")).toBe(false);
     expect(rows.map((row) => row.type)).toEqual([
+      "AVATAR",
+      "NAME",
+      "USERNAME",
+      "CATEGORIES",
       "ABOUT",
       "LINKS",
       "PROJECT",
@@ -223,6 +230,21 @@ describe("portfolio canvas", () => {
       }
     }
     expect(fixture.user.canvasDraftSavedAt).toBeInstanceOf(Date);
+  });
+
+  it("omits Categories from the starting layout when the user has no projects", async () => {
+    const fixture = createMockDatabase();
+
+    await setLayoutMode("user-1", "CANVAS", fixture.database);
+
+    const rows = fixture.rows();
+    expect(rows.map((row) => row.type)).toEqual([
+      "AVATAR",
+      "NAME",
+      "USERNAME",
+      "ABOUT",
+      "LINKS",
+    ]);
   });
 
   it("does not duplicate the initial layout on a later CANVAS switch", async () => {
@@ -339,10 +361,12 @@ describe("portfolio canvas", () => {
 
     expect(editor.elements).toHaveLength(1);
     expect(editor.elements[0]).toMatchObject({ type: "ABOUT" });
-    expect(editor.library.slice(0, 2)).toEqual([
-      { type: "ABOUT", placed: true },
-      { type: "LINKS", placed: false },
-    ]);
+    expect(
+      editor.library.find((item) => item.type === "ABOUT"),
+    ).toEqual({ type: "ABOUT", placed: true });
+    expect(
+      editor.library.find((item) => item.type === "LINKS"),
+    ).toEqual({ type: "LINKS", placed: false });
   });
 
   it("publishes the caller's elements to both states and reloads that exact layout", async () => {
@@ -451,6 +475,107 @@ describe("portfolio canvas", () => {
     expect(editor.library.some((item) => item.type === "PROJECT")).toBe(
       false,
     );
+  });
+});
+
+describe("canvas identity elements", () => {
+  it("treats identity types as single-instance like About/Links", async () => {
+    const fixture = createMockDatabase();
+
+    await expect(
+      saveCanvasDraft(
+        "user-1",
+        [
+          { type: "NAME", x: 0, y: 0, width: 300, height: 64, zIndex: 1 },
+          { type: "NAME", x: 0, y: 100, width: 300, height: 64, zIndex: 2 },
+        ],
+        fixture.database,
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("rejects a directly-typed text content field on an identity element", async () => {
+    const result = canvasElementInputSchema.safeParse({
+      type: "NAME",
+      textContent: "typed name",
+      x: 0,
+      y: 0,
+      width: 300,
+      height: 64,
+      zIndex: 1,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("persists per-element style columns and scopes them to that element", async () => {
+    const fixture = createMockDatabase();
+
+    await saveCanvasDraft(
+      "user-1",
+      [
+        {
+          type: "NAME",
+          x: 0,
+          y: 0,
+          width: 300,
+          height: 64,
+          zIndex: 1,
+          textColor: "#ff0000",
+          backgroundColor: "transparent",
+          fontFamily: "serif",
+        },
+        {
+          type: "AVATAR",
+          x: 0,
+          y: 100,
+          width: 160,
+          height: 160,
+          zIndex: 2,
+          avatarShape: "square",
+          avatarZoom: 150,
+          avatarOffsetX: 40,
+          avatarOffsetY: 60,
+        },
+        { type: "ABOUT", x: 0, y: 300, width: 400, height: 200, zIndex: 3 },
+      ],
+      fixture.database,
+    );
+
+    const rows = fixture.rows() as unknown as Array<{
+      type: string;
+      textColor: string | null;
+      backgroundColor: string | null;
+      fontFamily: string | null;
+      avatarShape: string | null;
+      avatarZoom: number | null;
+    }>;
+    const name = rows.find((row) => row.type === "NAME")!;
+    const avatar = rows.find((row) => row.type === "AVATAR")!;
+    const about = rows.find((row) => row.type === "ABOUT")!;
+
+    expect(name.textColor).toBe("#ff0000");
+    expect(name.backgroundColor).toBe("transparent");
+    expect(name.fontFamily).toBe("serif");
+    expect(avatar.avatarShape).toBe("square");
+    expect(avatar.avatarZoom).toBe(150);
+    // Style is scoped per element: the unstyled About carries no style.
+    expect(about.textColor).toBeNull();
+    expect(about.fontFamily).toBeNull();
+    // Avatar-only fields never leak onto non-avatar elements.
+    expect(name.avatarShape).toBeNull();
+  });
+
+  it("rejects an unsafe (non-hex) style color", async () => {
+    const result = canvasElementInputSchema.safeParse({
+      type: "NAME",
+      textColor: "red; background: url(evil)",
+      x: 0,
+      y: 0,
+      width: 300,
+      height: 64,
+      zIndex: 1,
+    });
+    expect(result.success).toBe(false);
   });
 });
 

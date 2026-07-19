@@ -141,7 +141,18 @@ function placedTextElement(): ServerElement {
 }
 
 function renderEditor() {
-  return render(<CanvasEditor bio={null} links={[]} projects={[]} />);
+  return render(
+    <CanvasEditor
+      bio={null}
+      links={[]}
+      projects={[]}
+      displayName="Test User"
+      username="test"
+      school={null}
+      avatarUrl={null}
+      categories={[]}
+    />,
+  );
 }
 
 beforeEach(() => {
@@ -187,7 +198,8 @@ describe("the ⋯ menu button", () => {
     // Opening via the ⋯ button afterwards replaces it: still a single menu.
     await user.click(screen.getByRole("button", { name: "Open menu for Text" }));
     expect(screen.getAllByRole("menu")).toHaveLength(1);
-    expect(screen.getAllByRole("menuitem")).toHaveLength(2);
+    // Text is a styleable element, so its menu offers Edit, Style, and Delete.
+    expect(screen.getAllByRole("menuitem")).toHaveLength(3);
   });
 
   it("is keyboard operable: Enter opens, focus lands in the menu, Escape closes and restores focus", async () => {
