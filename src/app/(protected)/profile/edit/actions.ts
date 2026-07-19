@@ -47,6 +47,7 @@ export async function updateProfileAction(formData: FormData) {
       theme,
       layoutSections: sections,
       customCss: value(formData, "customCss"),
+      private: value(formData, "private") === "on",
     });
     // Drop the user back on their live profile with a transient save flag,
     // instead of leaving them mid-edit.

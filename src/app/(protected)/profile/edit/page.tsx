@@ -58,6 +58,7 @@ export default async function EditProfilePage({
           sections: sections(profile.layoutSections),
           layoutMode: profile.layoutMode,
           customCss: profile.customCss ?? "",
+          private: profile.private,
         }}
       />
     </section>

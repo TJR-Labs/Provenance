@@ -51,6 +51,24 @@ const themeClasses = {
   terminal: "profile-theme-terminal",
 };
 
+function PrivateProfileNotice({ username }: { username: string }) {
+  return (
+    <div className="bg-canvas text-ink min-h-full flex-1">
+      <section className="mx-auto flex w-full max-w-3xl flex-col items-center px-6 py-24 text-center">
+        <p className="text-faint font-mono text-xs tracking-[0.14em] uppercase">
+          Private profile
+        </p>
+        <h1 className="font-display mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">
+          @{username} keeps this profile private
+        </h1>
+        <p className="text-muted mt-4">
+          This profile isn&apos;t publicly visible right now.
+        </p>
+      </section>
+    </div>
+  );
+}
+
 export default async function ProfilePage({
   params,
   searchParams,
@@ -62,6 +80,9 @@ export default async function ProfilePage({
     searchParams,
   ]);
   if (!profile) notFound();
+  if ("isPrivate" in profile) {
+    return <PrivateProfileNotice username={username} />;
+  }
 
   const links = readLinks(profile.links);
   const sections = readSections(profile.layoutSections);

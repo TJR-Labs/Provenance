@@ -56,6 +56,7 @@ function baseInitial(overrides: Partial<Init> = {}): Init {
     sections: ["about", "projects", "links"],
     layoutMode: "GRID",
     customCss: "",
+    private: false,
     ...overrides,
   };
 }
@@ -141,17 +142,13 @@ describe("the external links row form", () => {
 describe("the Custom CSS disclosure", () => {
   it("is collapsed by default when there is no saved CSS", () => {
     renderForm({ customCss: "" });
-    const details = screen
-      .getByText("Advanced: custom CSS")
-      .closest("details");
+    const details = screen.getByText("Advanced: custom CSS").closest("details");
     expect(details?.open).toBe(false);
   });
 
   it("is expanded by default when the user already has saved CSS", () => {
     renderForm({ customCss: ".profile-muted { color: teal; }" });
-    const details = screen
-      .getByText("Advanced: custom CSS")
-      .closest("details");
+    const details = screen.getByText("Advanced: custom CSS").closest("details");
     expect(details?.open).toBe(true);
   });
 

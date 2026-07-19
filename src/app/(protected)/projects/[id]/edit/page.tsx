@@ -42,6 +42,8 @@ export default async function EditProjectPage({
           hashtags: project.hashtags,
           links: project.links,
           layout: project.layout,
+          private: project.private,
+          excludeFromFeed: project.excludeFromFeed,
           media: project.media.map((item) => ({
             kind: item.kind,
             url: item.url,

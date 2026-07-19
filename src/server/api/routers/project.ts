@@ -63,7 +63,9 @@ export const projectRouter = createTRPCRouter({
 
   getById: publicProcedure
     .input(z.object({ id: z.string().min(1) }))
-    .query(({ ctx, input }) => getPublicProject(input.id, ctx.db.project)),
+    .query(({ ctx, input }) =>
+      getPublicProject(input.id, ctx.session?.user?.id ?? null, ctx.db.project),
+    ),
 
   listMine: protectedProcedure.query(({ ctx }) =>
     listMyProjects(ctx.session.user.id),
@@ -72,6 +74,10 @@ export const projectRouter = createTRPCRouter({
   listByUsername: publicProcedure
     .input(z.object({ username: z.string().trim().min(1) }))
     .query(({ ctx, input }) =>
-      listProjectsByUsername(input.username, ctx.db.project),
+      listProjectsByUsername(
+        input.username,
+        ctx.session?.user?.id ?? null,
+        ctx.db.project,
+      ),
     ),
 });

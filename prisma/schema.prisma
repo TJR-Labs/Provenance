@@ -78,6 +78,7 @@ model User {
   onboardingDismissedAt DateTime?
   customCss             String?
   banned                Boolean           @default(false)
+  private               Boolean           @default(false)
   createdAt             DateTime          @default(now())
   projects              Project[]
   reportsMade           Report[]          @relation("ReportsMade")
@@ -157,6 +158,8 @@ model Project {
   hashtags       String[]
   links          String[]
   layout         String          @default("default")
+  private        Boolean         @default(false)
+  excludeFromFeed Boolean        @default(false)
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   media          ProjectMedia[]

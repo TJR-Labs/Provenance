@@ -361,12 +361,14 @@ describe("portfolio canvas", () => {
 
     expect(editor.elements).toHaveLength(1);
     expect(editor.elements[0]).toMatchObject({ type: "ABOUT" });
-    expect(
-      editor.library.find((item) => item.type === "ABOUT"),
-    ).toEqual({ type: "ABOUT", placed: true });
-    expect(
-      editor.library.find((item) => item.type === "LINKS"),
-    ).toEqual({ type: "LINKS", placed: false });
+    expect(editor.library.find((item) => item.type === "ABOUT")).toEqual({
+      type: "ABOUT",
+      placed: true,
+    });
+    expect(editor.library.find((item) => item.type === "LINKS")).toEqual({
+      type: "LINKS",
+      placed: false,
+    });
   });
 
   it("publishes the caller's elements to both states and reloads that exact layout", async () => {
@@ -407,9 +409,9 @@ describe("portfolio canvas", () => {
 
   it("shows the hint only when undismissed and no elements are placed", async () => {
     const fresh = createMockDatabase();
-    expect((await getCanvasEditorState("user-1", fresh.database)).shouldShowHint).toBe(
-      true,
-    );
+    expect(
+      (await getCanvasEditorState("user-1", fresh.database)).shouldShowHint,
+    ).toBe(true);
 
     const dismissed = createMockDatabase({
       hintDismissedAt: new Date("2026-07-16T12:00:00Z"),
@@ -429,7 +431,8 @@ describe("portfolio canvas", () => {
       draftSavedAt: new Date("2026-07-16T12:00:00Z"),
     });
     expect(
-      (await getCanvasEditorState("user-1", withElement.database)).shouldShowHint,
+      (await getCanvasEditorState("user-1", withElement.database))
+        .shouldShowHint,
     ).toBe(false);
   });
 
@@ -472,9 +475,7 @@ describe("portfolio canvas", () => {
 
     const editor = await getCanvasEditorState("user-1", fixture.database);
     expect(editor.elements).toHaveLength(0);
-    expect(editor.library.some((item) => item.type === "PROJECT")).toBe(
-      false,
-    );
+    expect(editor.library.some((item) => item.type === "PROJECT")).toBe(false);
   });
 });
 
@@ -601,6 +602,7 @@ describe("public profile canvas data", () => {
 
     const profile = await getPublicProfile(
       "Alice",
+      null,
       users,
       projects,
       canvasElements,
@@ -640,19 +642,22 @@ describe("public profile canvas data", () => {
 
     const profile = await getPublicProfile(
       "alice",
+      null,
       users,
       projects,
       canvasElements,
     );
 
     expect(canvasElements.findMany).not.toHaveBeenCalled();
-    expect(profile?.canvasElements).toEqual([]);
+    expect(
+      profile && !("isPrivate" in profile) && profile.canvasElements,
+    ).toEqual([]);
   });
 });
 
 describe("sanitizeCanvasText", () => {
   it("strips script tags but keeps allowed formatting", () => {
-    const dirty = '<p>Hello <script>alert(1)</script><b>world</b></p>';
+    const dirty = "<p>Hello <script>alert(1)</script><b>world</b></p>";
     expect(sanitizeCanvasText(dirty)).toBe("<p>Hello <b>world</b></p>");
   });
 
@@ -663,9 +668,9 @@ describe("sanitizeCanvasText", () => {
   });
 
   it("drops unsafe javascript: hrefs but keeps the link text", () => {
-    expect(
-      sanitizeCanvasText('<a href="javascript:alert(1)">click</a>'),
-    ).toBe("<a>click</a>");
+    expect(sanitizeCanvasText('<a href="javascript:alert(1)">click</a>')).toBe(
+      "<a>click</a>",
+    );
   });
 
   it("keeps safe http(s) hrefs", () => {

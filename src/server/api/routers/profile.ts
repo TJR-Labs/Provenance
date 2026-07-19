@@ -15,6 +15,7 @@ export const profileRouter = createTRPCRouter({
     .query(({ ctx, input }) =>
       getPublicProfile(
         input.username,
+        ctx.session?.user?.id ?? null,
         ctx.db.user,
         ctx.db.project,
         ctx.db.canvasElement,
@@ -35,6 +36,7 @@ export const profileRouter = createTRPCRouter({
         layoutSections: true,
         layoutMode: true,
         customCss: true,
+        private: true,
       },
     }),
   ),

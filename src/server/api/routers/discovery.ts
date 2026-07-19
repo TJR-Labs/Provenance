@@ -12,7 +12,9 @@ export const discoveryRouter = createTRPCRouter({
         hashtag: z.string().trim().max(60).optional(),
       }),
     )
-    .query(({ ctx, input }) => discoverProjects(input, ctx.db.project)),
+    .query(({ ctx, input }) =>
+      discoverProjects(input, ctx.session?.user?.id ?? null, ctx.db.project),
+    ),
   popularHashtags: publicProcedure.query(({ ctx }) =>
     listPopularHashtags(20, ctx.db.project),
   ),

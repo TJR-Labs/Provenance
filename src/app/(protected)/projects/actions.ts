@@ -71,6 +71,8 @@ export async function saveProjectAction(
     hashtags: lines(value(formData, "hashtags")),
     links: lines(value(formData, "links")),
     layout,
+    private: value(formData, "private") === "on",
+    excludeFromFeed: value(formData, "includeInFeed") !== "on",
     media,
   };
 

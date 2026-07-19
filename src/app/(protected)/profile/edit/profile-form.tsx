@@ -23,6 +23,7 @@ type ProfileFormProps = {
     sections: Section[];
     layoutMode: LayoutMode;
     customCss: string;
+    private: boolean;
   };
 };
 
@@ -487,6 +488,23 @@ export function ProfileForm({
           </span>
         </label>
       </details>
+      <fieldset className="border-line rounded-md border p-4">
+        <legend className="text-ink text-sm font-medium">Privacy</legend>
+        <label className="text-ink mt-2 flex items-start gap-3 text-sm font-medium">
+          <input
+            type="checkbox"
+            name="private"
+            defaultChecked={initial.private}
+            className="border-line-strong bg-canvas text-accent mt-0.5 h-4 w-4 rounded border"
+          />
+          <span>
+            Make my profile private
+            <span className="text-muted mt-1 block font-normal">
+              Only you can see your profile and projects while this is on.
+            </span>
+          </span>
+        </label>
+      </fieldset>
       <button
         disabled={uploading}
         className="bg-accent text-on-accent hover:bg-accent-strong rounded-md px-5 py-2.5 font-semibold transition-colors disabled:opacity-50"

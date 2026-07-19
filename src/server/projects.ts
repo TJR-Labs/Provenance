@@ -25,6 +25,8 @@ export const projectInputSchema = z.object({
   hashtags: z.array(z.string().trim().min(1).max(60)).max(30),
   links: z.array(z.string().trim().url()).max(20),
   layout: z.enum(projectLayouts),
+  private: z.boolean().optional().default(false),
+  excludeFromFeed: z.boolean().optional().default(false),
   media: z.array(projectMediaInputSchema).max(30),
 });
 
@@ -59,6 +61,8 @@ export async function createProject(
       hashtags: input.hashtags,
       links: input.links,
       layout: input.layout,
+      private: input.private,
+      excludeFromFeed: input.excludeFromFeed,
       media: { create: input.media },
     },
     include: {
@@ -91,6 +95,8 @@ export async function updateProject(
       hashtags: input.hashtags,
       links: input.links,
       layout: input.layout,
+      private: input.private,
+      excludeFromFeed: input.excludeFromFeed,
       media: { deleteMany: {}, create: input.media },
     },
     include: {
@@ -114,25 +120,57 @@ export async function deleteProject(
   return projects.delete({ where: { id: projectId } });
 }
 
-export function getPublicProject(
+export async function getPublicProject(
   projectId: string,
+  viewerId: string | null,
   projects: ProjectDelegate = db.project,
 ) {
-  return projects.findFirst({
+  const project = await projects.findFirst({
     where: { id: projectId, user: { banned: false } },
     include: {
       media: { orderBy: { order: "asc" } },
-      user: { select: { id: true, username: true, displayName: true } },
+      user: {
+        select: {
+          id: true,
+          username: true,
+          displayName: true,
+          private: true,
+        },
+      },
     },
   });
+  if (!project) return null;
+  if (
+    (project.private || project.user.private) &&
+    project.userId !== viewerId
+  ) {
+    return null;
+  }
+  return project;
 }
 
 export function listProjectsByUsername(
   username: string,
+  viewerId: string | null,
   projects: ProjectDelegate = db.project,
 ) {
   return projects.findMany({
-    where: { user: { username: username.toLowerCase(), banned: false } },
+    where: viewerId
+      ? {
+          user: { username: username.toLowerCase(), banned: false },
+          OR: [
+            { userId: viewerId },
+            { private: false, user: { private: false } },
+          ],
+        }
+      : {
+          private: false,
+          user: {
+            username: username.toLowerCase(),
+            banned: false,
+            private: false,
+          },
+        },
     include: {
       media: { orderBy: { order: "asc" } },
       user: { select: { id: true, username: true, displayName: true } },
@@ -143,11 +181,16 @@ export function listProjectsByUsername(
 
 export function discoverProjects(
   filters: { category?: Category; hashtag?: string },
+  viewerId: string | null,
   projects: ProjectDelegate = db.project,
 ) {
+  void viewerId;
+  const unfiltered = !filters.category && !filters.hashtag;
   return projects.findMany({
     where: {
-      user: { banned: false },
+      user: { banned: false, private: false },
+      private: false,
+      ...(unfiltered && { excludeFromFeed: false }),
       ...(filters.category && { category: filters.category }),
       ...(filters.hashtag && {
         hashtags: {
@@ -173,7 +216,7 @@ export async function listPopularHashtags(
   projects: ProjectDelegate = db.project,
 ) {
   const rows = await projects.findMany({
-    where: { user: { banned: false } },
+    where: { user: { banned: false, private: false }, private: false },
     select: { hashtags: true },
   });
   const counts = new Map<string, number>();

@@ -95,6 +95,7 @@ export const updateProfileInputSchema = z.object({
   theme: z.enum(profileThemes),
   layoutSections: z.array(z.enum(profileSections)).max(profileSections.length),
   customCss: z.string().max(20_000).optional(),
+  private: z.boolean().optional().default(false),
 });
 
 export type CreateUserInput = z.infer<typeof createUserInputSchema>;
@@ -717,6 +718,7 @@ export async function updateProfile(
       theme: input.theme,
       layoutSections: [...new Set(input.layoutSections)],
       customCss: nullable(input.customCss),
+      private: input.private,
     },
     select: {
       id: true,
@@ -729,6 +731,7 @@ export async function updateProfile(
       theme: true,
       layoutSections: true,
       customCss: true,
+      private: true,
     },
   });
 }
