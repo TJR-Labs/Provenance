@@ -63,6 +63,34 @@ const themeOptions: {
     accent: "#a5a1f0",
     ink: "#e9e9f7",
   },
+  {
+    value: "ember",
+    label: "Ember warm",
+    bg: "#17110e",
+    accent: "#f2864b",
+    ink: "#f2e6dc",
+  },
+  {
+    value: "rose",
+    label: "Rose blush",
+    bg: "#fbeef0",
+    accent: "#b02a5b",
+    ink: "#3a1f28",
+  },
+  {
+    value: "mist",
+    label: "Mist cool",
+    bg: "#eef2f5",
+    accent: "#0f7d8c",
+    ink: "#1c2a33",
+  },
+  {
+    value: "terminal",
+    label: "Terminal mono",
+    bg: "#000000",
+    accent: "#33e07a",
+    ink: "#d6ffe0",
+  },
 ];
 
 const linkInputClass =

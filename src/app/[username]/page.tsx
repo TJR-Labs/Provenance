@@ -45,6 +45,10 @@ const themeClasses = {
   default: "",
   paper: "profile-theme-paper",
   studio: "profile-theme-studio",
+  ember: "profile-theme-ember",
+  rose: "profile-theme-rose",
+  mist: "profile-theme-mist",
+  terminal: "profile-theme-terminal",
 };
 
 export default async function ProfilePage({

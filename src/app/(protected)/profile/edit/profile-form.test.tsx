@@ -167,15 +167,19 @@ describe("the Custom CSS disclosure", () => {
 });
 
 describe("the theme swatches", () => {
-  it("renders a labeled swatch control for each of the three themes", () => {
+  it("renders a labeled swatch control for each built-in theme", () => {
     renderForm();
-    expect(
-      screen.getByRole("button", { name: /Default dark/ }),
-    ).not.toBeNull();
-    expect(screen.getByRole("button", { name: /Paper light/ })).not.toBeNull();
-    expect(
-      screen.getByRole("button", { name: /Indigo studio/ }),
-    ).not.toBeNull();
+    for (const label of [
+      /Default dark/,
+      /Paper light/,
+      /Indigo studio/,
+      /Ember warm/,
+      /Rose blush/,
+      /Mist cool/,
+      /Terminal mono/,
+    ]) {
+      expect(screen.getByRole("button", { name: label })).not.toBeNull();
+    }
   });
 
   it("marks the saved theme's swatch as pressed and updates the select on click", async () => {

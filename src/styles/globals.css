@@ -196,6 +196,122 @@
   --pv-warning-line: #51422e;
 }
 
+.profile-theme-ember {
+  color-scheme: dark;
+
+  --pv-canvas: #17110e;
+  --pv-surface: #1f1712;
+  --pv-raised: #2a201a;
+  --pv-ink: #f2e6dc;
+  --pv-muted: #c3ab9c;
+  --pv-faint: #97806f;
+  --pv-line: #2e231c;
+  --pv-line-strong: #4a382d;
+  --pv-accent: #f2864b;
+  --pv-accent-strong: #ff9d67;
+  --pv-on-accent: #2a1408;
+  --pv-brass: #d7a86a;
+  --pv-danger: #f0846f;
+  --pv-danger-solid: #c14a34;
+  --pv-danger-hover: #d15840;
+  --pv-on-danger: #fff2ee;
+  --pv-danger-surface: #33190f;
+  --pv-danger-line: #5a2e1e;
+  --pv-success: #86cf9a;
+  --pv-success-surface: #182619;
+  --pv-success-line: #2f4a34;
+  --pv-warning: #e6b45f;
+  --pv-warning-surface: #2c2211;
+  --pv-warning-line: #524022;
+}
+
+.profile-theme-rose {
+  color-scheme: light;
+
+  --pv-canvas: #fbeef0;
+  --pv-surface: #fff7f8;
+  --pv-raised: #f6dfe4;
+  --pv-ink: #3a1f28;
+  --pv-muted: #7a4b57;
+  --pv-faint: #9c6b76;
+  --pv-line: #f0d3da;
+  --pv-line-strong: #d8a9b5;
+  --pv-accent: #b02a5b;
+  --pv-accent-strong: #8f1f48;
+  --pv-on-accent: #fdeff3;
+  --pv-brass: #9c6b2f;
+  --pv-danger: #bf3a2c;
+  --pv-danger-solid: #a83322;
+  --pv-danger-hover: #8f2a1b;
+  --pv-on-danger: #fff3f0;
+  --pv-danger-surface: #f7ddd6;
+  --pv-danger-line: #e0b0a4;
+  --pv-success: #2f7350;
+  --pv-success-surface: #e0efe4;
+  --pv-success-line: #b5d3bf;
+  --pv-warning: #8a5a15;
+  --pv-warning-surface: #f6e6c9;
+  --pv-warning-line: #e0c58c;
+}
+
+.profile-theme-mist {
+  color-scheme: light;
+
+  --pv-canvas: #eef2f5;
+  --pv-surface: #f9fbfc;
+  --pv-raised: #dde6ec;
+  --pv-ink: #1c2a33;
+  --pv-muted: #4a616e;
+  --pv-faint: #6d8695;
+  --pv-line: #d5e0e7;
+  --pv-line-strong: #adc0cb;
+  --pv-accent: #0f7d8c;
+  --pv-accent-strong: #0a5f6b;
+  --pv-on-accent: #eafafc;
+  --pv-brass: #a86a2f;
+  --pv-danger: #b23a2c;
+  --pv-danger-solid: #9e3222;
+  --pv-danger-hover: #85291b;
+  --pv-on-danger: #fff3f0;
+  --pv-danger-surface: #f4ded8;
+  --pv-danger-line: #dcb2a7;
+  --pv-success: #1f7a54;
+  --pv-success-surface: #dcefe3;
+  --pv-success-line: #aed2bd;
+  --pv-warning: #8a5f14;
+  --pv-warning-surface: #f1e6c8;
+  --pv-warning-line: #d9c088;
+}
+
+.profile-theme-terminal {
+  color-scheme: dark;
+
+  --pv-canvas: #000000;
+  --pv-surface: #0a0f0a;
+  --pv-raised: #121a12;
+  --pv-ink: #d6ffe0;
+  --pv-muted: #6fbf8a;
+  --pv-faint: #4a8a63;
+  --pv-line: #16261a;
+  --pv-line-strong: #274a30;
+  --pv-accent: #33e07a;
+  --pv-accent-strong: #5cff9e;
+  --pv-on-accent: #05130a;
+  --pv-brass: #e6c14d;
+  --pv-danger: #ff7a6b;
+  --pv-danger-solid: #c73a2a;
+  --pv-danger-hover: #d94a38;
+  --pv-on-danger: #1a0806;
+  --pv-danger-surface: #2a0f0b;
+  --pv-danger-line: #4d2019;
+  --pv-success: #4ade80;
+  --pv-success-surface: #0c1f13;
+  --pv-success-line: #1f4029;
+  --pv-warning: #e6c14d;
+  --pv-warning-surface: #241f0a;
+  --pv-warning-line: #47401a;
+}
+
 /* Accessibility floor: one visible keyboard focus treatment everywhere. */
 :focus-visible {
   outline: 2px solid var(--pv-accent);

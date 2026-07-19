@@ -75,7 +75,15 @@ export const profileLinkSchema = z.object({
   url: z.string().trim().url(),
 });
 
-export const profileThemes = ["default", "paper", "studio"] as const;
+export const profileThemes = [
+  "default",
+  "paper",
+  "studio",
+  "ember",
+  "rose",
+  "mist",
+  "terminal",
+] as const;
 export const profileSections = ["about", "projects", "links"] as const;
 
 export const updateProfileInputSchema = z.object({
