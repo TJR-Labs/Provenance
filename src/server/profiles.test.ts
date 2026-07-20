@@ -36,6 +36,8 @@ function expectedFindFirst(projectWhere: unknown) {
       avatarUrl: true,
       links: true,
       theme: true,
+      canvasBackgroundColor: true,
+      canvasBackgroundImageUrl: true,
       layoutSections: true,
       layoutMode: true,
       customCss: true,

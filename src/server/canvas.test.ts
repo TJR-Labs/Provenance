@@ -12,6 +12,7 @@ import {
   saveCanvasDraft,
   setLayoutMode,
   type CanvasElementInput,
+  type CanvasSnapshotInput,
 } from "~/server/canvas";
 import { CANVAS_MIN_WIDTH, CANVAS_WIDTH } from "~/lib/canvas-constants";
 import { getPublicProfile } from "~/server/profiles";
@@ -37,6 +38,29 @@ type ProjectFixture = {
   title: string;
   media: { url: string }[];
 };
+
+function canvasSnapshot(
+  elements: CanvasElementInput[],
+  overrides: Partial<CanvasSnapshotInput> = {},
+): CanvasSnapshotInput {
+  return {
+    revision: 1,
+    elements,
+    theme: "default",
+    backgroundColor: null,
+    backgroundImageUrl: null,
+    backgroundImageResourceId: null,
+    profile: {
+      displayName: "Alice",
+      bio: "",
+      school: "",
+      avatarUrl: "",
+      links: [],
+    },
+    projects: [],
+    ...overrides,
+  };
+}
 
 function storedElement(
   input: CanvasElementInput,
@@ -78,6 +102,18 @@ function createMockDatabase({
     canvasDraftSavedAt: draftSavedAt,
     canvasPublishedAt: publishedAt,
     canvasHintDismissedAt: hintDismissedAt,
+    canvasDraftRevision: 0,
+    canvasDraftSnapshot: null as unknown,
+    username: "alice",
+    displayName: "Alice",
+    bio: null as string | null,
+    school: null as string | null,
+    avatarUrl: null as string | null,
+    links: [] as { label: string; url: string }[],
+    theme: "default",
+    canvasBackgroundColor: null as string | null,
+    canvasBackgroundImageUrl: null as string | null,
+    canvasBackgroundResourceId: null as string | null,
   };
 
   const canvasElement = {
@@ -155,16 +191,45 @@ function createMockDatabase({
     }),
   };
 
+  const imageResource = {
+    findMany: vi.fn().mockResolvedValue([]),
+    findFirst: vi.fn().mockResolvedValue(null),
+  };
+
   const userDelegate = {
     update: vi.fn(async ({ data }: { data: Partial<typeof user> }) => {
       Object.assign(user, data);
       return { ...user };
     }),
+    updateMany: vi.fn(
+      async ({
+        where,
+        data,
+      }: {
+        where: {
+          id: string;
+          canvasDraftRevision?: { lt?: number; lte?: number };
+        };
+        data: Partial<typeof user>;
+      }) => {
+        const revision = where.canvasDraftRevision;
+        const matches =
+          where.id === user.id &&
+          (revision?.lt === undefined ||
+            user.canvasDraftRevision < revision.lt) &&
+          (revision?.lte === undefined ||
+            user.canvasDraftRevision <= revision.lte);
+        if (!matches) return { count: 0 };
+        Object.assign(user, data);
+        return { count: 1 };
+      },
+    ),
     findUniqueOrThrow: vi.fn(async () => ({ ...user })),
   };
 
   const database = {
     canvasElement,
+    imageResource,
     project,
     user: userDelegate,
     $transaction: vi.fn(),
@@ -282,7 +347,7 @@ describe("portfolio canvas", () => {
 
     const result = await saveCanvasDraft(
       "user-1",
-      [
+      canvasSnapshot([
         {
           type: "ABOUT",
           x: 5000,
@@ -291,21 +356,24 @@ describe("portfolio canvas", () => {
           height: 5,
           zIndex: 1,
         },
-      ],
+      ]),
       fixture.database,
     );
 
-    expect(result).toEqual([
-      {
-        type: "ABOUT",
-        x: CANVAS_WIDTH - CANVAS_MIN_WIDTH,
-        y: 0,
-        width: 160,
-        height: 80,
-        zIndex: 1,
-      },
-    ]);
-    expect(fixture.rows()[0]).toMatchObject(result[0]!);
+    expect(result).toEqual({
+      elements: [
+        {
+          type: "ABOUT",
+          x: CANVAS_WIDTH - CANVAS_MIN_WIDTH,
+          y: 0,
+          width: 160,
+          height: 80,
+          zIndex: 1,
+        },
+      ],
+      revision: 1,
+    });
+    expect(fixture.rows()[0]).toMatchObject(result.elements[0]!);
   });
 
   it("rejects a project owned by another user", async () => {
@@ -314,7 +382,7 @@ describe("portfolio canvas", () => {
     await expect(
       saveCanvasDraft(
         "user-1",
-        [
+        canvasSnapshot([
           {
             type: "PROJECT",
             projectId: "other-project",
@@ -324,7 +392,7 @@ describe("portfolio canvas", () => {
             height: 200,
             zIndex: 1,
           },
-        ],
+        ]),
         fixture.database,
       ),
     ).rejects.toBeInstanceOf(CanvasOwnershipError);
@@ -356,7 +424,7 @@ describe("portfolio canvas", () => {
       draftSavedAt: new Date("2026-07-16T12:00:00Z"),
     });
 
-    await saveCanvasDraft("user-1", [about], fixture.database);
+    await saveCanvasDraft("user-1", canvasSnapshot([about]), fixture.database);
     const editor = await getCanvasEditorState("user-1", fixture.database);
 
     expect(editor.elements).toHaveLength(1);
@@ -390,7 +458,11 @@ describe("portfolio canvas", () => {
       zIndex: 7,
     };
 
-    await publishCanvasLayout("user-1", [current], fixture.database);
+    await publishCanvasLayout(
+      "user-1",
+      canvasSnapshot([current]),
+      fixture.database,
+    );
 
     expect(fixture.mocks.canvasElement.createMany).toHaveBeenCalledTimes(2);
     expect(fixture.rows()).toEqual([
@@ -486,10 +558,10 @@ describe("canvas identity elements", () => {
     await expect(
       saveCanvasDraft(
         "user-1",
-        [
+        canvasSnapshot([
           { type: "NAME", x: 0, y: 0, width: 300, height: 64, zIndex: 1 },
           { type: "NAME", x: 0, y: 100, width: 300, height: 64, zIndex: 2 },
-        ],
+        ]),
         fixture.database,
       ),
     ).rejects.toThrow();
@@ -513,7 +585,7 @@ describe("canvas identity elements", () => {
 
     await saveCanvasDraft(
       "user-1",
-      [
+      canvasSnapshot([
         {
           type: "NAME",
           x: 0,
@@ -538,7 +610,7 @@ describe("canvas identity elements", () => {
           avatarOffsetY: 60,
         },
         { type: "ABOUT", x: 0, y: 300, width: 400, height: 200, zIndex: 3 },
-      ],
+      ]),
       fixture.database,
     );
 
@@ -730,7 +802,7 @@ describe("no cap on TEXT/IMAGE/LINK elements", () => {
 
     await saveCanvasDraft(
       "user-1",
-      [textElement(1), textElement(2), textElement(3)],
+      canvasSnapshot([textElement(1), textElement(2), textElement(3)]),
       fixture.database,
     );
 
@@ -800,7 +872,7 @@ describe("no cap on TEXT/IMAGE/LINK elements", () => {
       },
     ];
 
-    await saveCanvasDraft("user-1", elements, fixture.database);
+    await saveCanvasDraft("user-1", canvasSnapshot(elements), fixture.database);
 
     const rows = fixture.rows();
     expect(rows).toHaveLength(6);
@@ -827,7 +899,7 @@ describe("canvas project card overrides", () => {
 
     await saveCanvasDraft(
       "user-1",
-      [
+      canvasSnapshot([
         {
           type: "PROJECT",
           projectId: "project-1",
@@ -842,7 +914,7 @@ describe("canvas project card overrides", () => {
           height: 240,
           zIndex: 1,
         },
-      ],
+      ]),
       fixture.database,
     );
 
@@ -875,7 +947,7 @@ describe("canvas project card overrides", () => {
 
     await saveCanvasDraft(
       "user-1",
-      [
+      canvasSnapshot([
         {
           type: "PROJECT",
           projectId: "project-1",
@@ -886,7 +958,7 @@ describe("canvas project card overrides", () => {
           height: 240,
           zIndex: 1,
         },
-      ],
+      ]),
       fixture.database,
     );
 
@@ -915,7 +987,7 @@ describe("canvas project card overrides", () => {
 
     await saveCanvasDraft(
       "user-1",
-      [
+      canvasSnapshot([
         {
           type: "PROJECT",
           projectId: "project-1",
@@ -928,7 +1000,7 @@ describe("canvas project card overrides", () => {
           height: 240,
           zIndex: 1,
         },
-      ],
+      ]),
       fixture.database,
     );
     expect(fixture.rows()).toHaveLength(1);
