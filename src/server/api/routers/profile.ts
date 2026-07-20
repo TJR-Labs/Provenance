@@ -33,6 +33,8 @@ export const profileRouter = createTRPCRouter({
         avatarUrl: true,
         links: true,
         theme: true,
+        canvasBackgroundColor: true,
+        canvasBackgroundImageUrl: true,
         layoutSections: true,
         layoutMode: true,
         customCss: true,

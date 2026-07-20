@@ -3,6 +3,8 @@ import { createHash, randomBytes } from "node:crypto";
 import { Role, type Prisma, type PrismaClient } from "../../generated/prisma";
 import { z } from "zod";
 
+import { safeExternalUrl } from "~/app/safe-external-url";
+import { PROFILE_THEMES } from "~/lib/profile-theme";
 import { hashPassword, verifyPassword } from "~/server/auth/password";
 import { db } from "~/server/db";
 import {
@@ -72,26 +74,25 @@ export const createUserInputSchema = z.object({
 
 export const profileLinkSchema = z.object({
   label: z.string().trim().min(1).max(40),
-  url: z.string().trim().url(),
+  url: z
+    .string()
+    .trim()
+    .url()
+    .refine((value) => Boolean(safeExternalUrl(value)), "Enter a valid http(s) URL."),
 });
 
-export const profileThemes = [
-  "default",
-  "paper",
-  "studio",
-  "ember",
-  "rose",
-  "mist",
-  "terminal",
-] as const;
+export const profileThemes = PROFILE_THEMES;
 export const profileSections = ["about", "projects", "links"] as const;
 
-export const updateProfileInputSchema = z.object({
+export const profileContentInputSchema = z.object({
   displayName: z.string().trim().min(1).max(80),
   bio: z.string().trim().max(2000).optional(),
   school: z.string().trim().max(160).optional(),
   avatarUrl: z.string().trim().url().optional().or(z.literal("")),
   links: z.array(profileLinkSchema).max(12),
+});
+
+export const updateProfileInputSchema = profileContentInputSchema.extend({
   theme: z.enum(profileThemes),
   layoutSections: z.array(z.enum(profileSections)).max(profileSections.length),
   customCss: z.string().max(20_000).optional(),

@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { ProjectCard } from "~/app/project-card";
 import { reportProfileAction } from "~/app/report-actions";
 import { safeExternalUrl } from "~/app/safe-external-url";
+import { profileBackgroundStyle, profileThemeClass } from "~/lib/profile-theme";
 import { getServerCaller } from "~/server/api/caller";
 import { auth } from "~/server/auth";
 import { categoryLabels } from "~/server/categories";
@@ -38,18 +39,6 @@ function readSections(value: unknown) {
     profileSections.includes(item as (typeof profileSections)[number]),
   );
 }
-
-// Profile skins override the design tokens for this subtree (see globals.css),
-// so nested components follow the visitor-facing theme the owner picked.
-const themeClasses = {
-  default: "",
-  paper: "profile-theme-paper",
-  studio: "profile-theme-studio",
-  ember: "profile-theme-ember",
-  rose: "profile-theme-rose",
-  mist: "profile-theme-mist",
-  terminal: "profile-theme-terminal",
-};
 
 function PrivateProfileNotice({ username }: { username: string }) {
   return (
@@ -90,9 +79,7 @@ export default async function ProfilePage({
   const css = profile.customCss
     ? sanitizeCustomCss(profile.customCss, profile.username)
     : "";
-  const theme =
-    themeClasses[profile.theme as keyof typeof themeClasses] ??
-    themeClasses.default;
+  const theme = profileThemeClass(profile.theme);
   const reportAction = reportProfileAction.bind(null, profile.username);
   const onboarding =
     session?.user.id === profile.id
@@ -102,7 +89,13 @@ export default async function ProfilePage({
   return (
     <div
       className={`${scope} ${theme} bg-canvas text-ink min-h-full flex-1`}
-      style={{ contain: "layout" }}
+      style={{
+        contain: "layout",
+        ...profileBackgroundStyle(
+          profile.canvasBackgroundColor,
+          profile.canvasBackgroundImageUrl,
+        ),
+      }}
     >
       {css ? <style dangerouslySetInnerHTML={{ __html: css }} /> : null}
       <section className="mx-auto w-full max-w-6xl px-6 py-14">

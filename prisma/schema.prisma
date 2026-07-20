@@ -59,33 +59,42 @@ enum CanvasElementState {
 }
 
 model User {
-  id                    String            @id @default(cuid())
-  username              String            @unique
-  passwordHash          String?
-  email                 String?           @unique
-  role                  Role              @default(USER)
-  displayName           String
-  bio                   String?
-  school                String?
-  avatarUrl             String?
-  links                 Json?
-  theme                 String            @default("default")
-  layoutSections        Json?
-  layoutMode            LayoutMode        @default(GRID)
-  canvasDraftSavedAt    DateTime?
-  canvasPublishedAt     DateTime?
-  canvasHintDismissedAt DateTime?
-  onboardingDismissedAt DateTime?
-  customCss             String?
-  banned                Boolean           @default(false)
-  private               Boolean           @default(false)
-  createdAt             DateTime          @default(now())
-  projects              Project[]
-  reportsMade           Report[]          @relation("ReportsMade")
-  reportsAgainst        Report[]          @relation("ReportsAgainstUser")
-  accounts              Account[]
-  oauthLinkIntents      OAuthLinkIntent[]
-  canvasElements        CanvasElement[]
+  id                         String            @id @default(cuid())
+  username                   String            @unique
+  passwordHash               String?
+  email                      String?           @unique
+  role                       Role              @default(USER)
+  displayName                String
+  bio                        String?
+  school                     String?
+  avatarUrl                  String?
+  links                      Json?
+  theme                      String            @default("default")
+  canvasBackgroundColor      String?
+  canvasBackgroundImageUrl   String?
+  canvasBackgroundResourceId String?
+  canvasBackgroundResource   ImageResource?    @relation("BackgroundResource", fields: [canvasBackgroundResourceId], references: [id], onDelete: SetNull)
+  layoutSections             Json?
+  layoutMode                 LayoutMode        @default(GRID)
+  canvasDraftSavedAt         DateTime?
+  canvasPublishedAt          DateTime?
+  canvasDraftRevision        Int               @default(0)
+  canvasDraftSnapshot        Json?
+  canvasHintDismissedAt      DateTime?
+  onboardingDismissedAt      DateTime?
+  customCss                  String?
+  banned                     Boolean           @default(false)
+  private                    Boolean           @default(false)
+  createdAt                  DateTime          @default(now())
+  projects                   Project[]
+  reportsMade                Report[]          @relation("ReportsMade")
+  reportsAgainst             Report[]          @relation("ReportsAgainstUser")
+  accounts                   Account[]
+  oauthLinkIntents           OAuthLinkIntent[]
+  canvasElements             CanvasElement[]
+  imageResources             ImageResource[]
+
+  @@index([canvasBackgroundResourceId])
 }
 
 model Account {
@@ -149,52 +158,55 @@ model RateLimitAttempt {
 }
 
 model Project {
-  id             String          @id @default(cuid())
-  userId         String
-  user           User            @relation(fields: [userId], references: [id])
-  title          String
-  description    String
-  category       Category
-  hashtags       String[]
-  links          String[]
-  layout         String          @default("default")
-  private        Boolean         @default(false)
-  excludeFromFeed Boolean        @default(false)
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  media          ProjectMedia[]
-  reports        Report[]
-  canvasElements CanvasElement[]
+  id              String          @id @default(cuid())
+  userId          String
+  user            User            @relation(fields: [userId], references: [id])
+  title           String
+  description     String
+  category        Category
+  hashtags        String[]
+  links           String[]
+  layout          String          @default("default")
+  private         Boolean         @default(false)
+  excludeFromFeed Boolean         @default(false)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  media           ProjectMedia[]
+  reports         Report[]
+  canvasElements  CanvasElement[]
 
   @@index([userId])
   @@index([category])
 }
 
 model CanvasElement {
-  id           String             @id @default(cuid())
-  userId       String
-  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  state        CanvasElementState
-  type         CanvasElementType
-  projectId    String?
-  project      Project?           @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  x            Int
-  y            Int
-  width        Int
-  height       Int
-  zIndex       Int
-  textContent  String?
-  imageUrl     String?
-  imageCaption String?
-  linkLabel    String?
-  linkUrl      String?
-  textColor       String?
-  backgroundColor String?
-  fontFamily      String?
-  avatarShape     String?
-  avatarZoom      Int?
-  avatarOffsetX   Int?
-  avatarOffsetY   Int?
+  id                         String             @id @default(cuid())
+  userId                     String
+  user                       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  state                      CanvasElementState
+  type                       CanvasElementType
+  projectId                  String?
+  project                    Project?           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  x                          Int
+  y                          Int
+  width                      Int
+  height                     Int
+  zIndex                     Int
+  locked                     Boolean            @default(false)
+  resourceId                 String?
+  resource                   ImageResource?     @relation(fields: [resourceId], references: [id], onDelete: SetNull)
+  textContent                String?
+  imageUrl                   String?
+  imageCaption               String?
+  linkLabel                  String?
+  linkUrl                    String?
+  textColor                  String?
+  backgroundColor            String?
+  fontFamily                 String?
+  avatarShape                String?
+  avatarZoom                 Int?
+  avatarOffsetX              Int?
+  avatarOffsetY              Int?
   // Canvas-only overrides for a placed PROJECT element. Each is scoped to this
   // one CanvasElement row and never touches the underlying Project record.
   // Null = unset (fall back to the real project value). For hashtags, a Json
@@ -206,6 +218,21 @@ model CanvasElement {
   cardLayout                 String?
 
   @@index([userId, state])
+  @@index([resourceId])
+}
+
+model ImageResource {
+  id              String          @id @default(cuid())
+  userId          String
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  url             String
+  mimeType        String
+  createdAt       DateTime        @default(now())
+  removedAt       DateTime?
+  elements        CanvasElement[]
+  backgroundUsers User[]          @relation("BackgroundResource")
+
+  @@index([userId, removedAt])
 }
 
 model ProjectMedia {
