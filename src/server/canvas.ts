@@ -7,6 +7,7 @@ import type {
 import { z } from "zod";
 
 import { safeExternalUrl } from "~/app/safe-external-url";
+import { PROFILE_THEMES } from "~/lib/profile-theme";
 import { CARD_LAYOUTS, normalizeHashtags } from "~/lib/canvas-project-card";
 import {
   CANVAS_MAX_HEIGHT,
@@ -26,6 +27,8 @@ import {
   STYLEABLE_TYPES,
 } from "~/lib/canvas-style";
 import { db } from "~/server/db";
+import { normalizeProjectInput, projectInputSchema } from "~/server/projects";
+import { profileContentInputSchema } from "~/server/users";
 
 const STYLEABLE_TYPE_SET = new Set<string>(STYLEABLE_TYPES);
 
@@ -95,6 +98,8 @@ export const canvasElementInputSchema = z
     width: z.number().int(),
     height: z.number().int(),
     zIndex: z.number().int(),
+    locked: z.boolean().optional(),
+    resourceId: z.string().min(1).optional(),
   })
   .superRefine((element, context) => {
     // Style panel fields (color/background/font) are only valid on the six
@@ -191,6 +196,13 @@ export const canvasElementInputSchema = z
         path: ["imageUrl"],
       });
     }
+    if (element.resourceId && element.type !== "IMAGE") {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "resourceId is only valid for image elements.",
+        path: ["resourceId"],
+      });
+    }
     if (element.type !== "IMAGE" && (element.imageUrl ?? element.imageCaption)) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
@@ -229,6 +241,64 @@ export const saveCanvasElementsInputSchema = z
   .max(500);
 
 export type CanvasElementInput = z.infer<typeof canvasElementInputSchema>;
+
+const canvasProjectSnapshotSchema = projectInputSchema.extend({
+  id: z.string().min(1),
+});
+
+const backgroundColorSchema = z
+  .string()
+  .refine(isSafeCanvasColor, "Choose a valid background color.")
+  .nullable();
+
+const canvasSnapshotObjectSchema = z.object({
+    revision: z.number().int().nonnegative(),
+    elements: saveCanvasElementsInputSchema,
+    theme: z.enum(PROFILE_THEMES),
+    backgroundColor: backgroundColorSchema,
+    backgroundImageUrl: z.string().trim().url().max(2_000).nullable(),
+    backgroundImageResourceId: z.string().min(1).nullable(),
+    profile: profileContentInputSchema,
+    projects: z.array(canvasProjectSnapshotSchema).max(200),
+  });
+
+export const canvasSnapshotInputSchema = canvasSnapshotObjectSchema.superRefine((snapshot, context) => {
+    if (Boolean(snapshot.backgroundImageUrl) !== Boolean(snapshot.backgroundImageResourceId)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "A background image must reference an owned resource.",
+        path: ["backgroundImageResourceId"],
+      });
+    }
+  });
+
+const canvasDraftMetadataSchema = canvasSnapshotObjectSchema
+  .omit({ elements: true })
+  .extend({ version: z.literal(1) });
+
+export type CanvasSnapshotInput = z.infer<typeof canvasSnapshotInputSchema>;
+
+export const canvasClipboardPayloadSchema = z.object({
+  kind: z.literal("provenance.canvas.cards"),
+  version: z.literal(1),
+  ownerUserId: z.string().min(1),
+  profileUsername: z.string().min(1),
+  cards: saveCanvasElementsInputSchema.min(1),
+});
+
+export class CanvasClipboardError extends Error {
+  constructor(message = "That clipboard data cannot be pasted here.") {
+    super(message);
+    this.name = "CanvasClipboardError";
+  }
+}
+
+export class CanvasDraftConflictError extends Error {
+  constructor() {
+    super("A newer draft is already saved. Reload before publishing.");
+    this.name = "CanvasDraftConflictError";
+  }
+}
 
 const validatedCanvasElementsSchema = saveCanvasElementsInputSchema.superRefine(
   (elements, context) => {
@@ -344,6 +414,8 @@ function createRows(
     width: element.width,
     height: element.height,
     zIndex: element.zIndex,
+    locked: element.locked ?? false,
+    resourceId: element.type === "IMAGE" ? (element.resourceId ?? null) : null,
     textContent: element.type === "TEXT" ? (element.textContent ?? null) : null,
     imageUrl: element.type === "IMAGE" ? (element.imageUrl ?? null) : null,
     imageCaption:
@@ -384,18 +456,87 @@ async function validateAndClampElements(
   const projectIds = elements.flatMap((element) =>
     element.type === "PROJECT" && element.projectId ? [element.projectId] : [],
   );
+  const resourceIds = elements.flatMap((element) =>
+    element.type === "IMAGE" && element.resourceId ? [element.resourceId] : [],
+  );
 
-  if (projectIds.length > 0) {
-    const ownedProjects = await database.project.findMany({
-      where: { userId, id: { in: projectIds } },
-      select: { id: true },
-    });
-    if (ownedProjects.length !== projectIds.length) {
-      throw new CanvasOwnershipError();
-    }
+  const [ownedProjects, ownedResources] = await Promise.all([
+    projectIds.length
+      ? database.project.findMany({
+          where: { userId, id: { in: projectIds } },
+          select: { id: true },
+        })
+      : Promise.resolve([]),
+    resourceIds.length
+      ? database.imageResource.findMany({
+          where: { userId, id: { in: resourceIds } },
+          select: { id: true },
+        })
+      : Promise.resolve([]),
+  ]);
+  if (
+    ownedProjects.length !== new Set(projectIds).size ||
+    ownedResources.length !== new Set(resourceIds).size
+  ) {
+    throw new CanvasOwnershipError();
   }
 
   return clampElements(elements);
+}
+
+async function validateSnapshot(
+  userId: string,
+  rawSnapshot: unknown,
+  database: PrismaClient,
+) {
+  const input = canvasSnapshotInputSchema.parse(rawSnapshot);
+  const elements = await validateAndClampElements(
+    userId,
+    input.elements,
+    database,
+  );
+  const projectIds = input.projects.map((project) => project.id);
+  if (new Set(projectIds).size !== projectIds.length) {
+    throw new CanvasOwnershipError();
+  }
+  if (projectIds.length) {
+    const owned = await database.project.findMany({
+      where: { userId, id: { in: projectIds } },
+      select: { id: true },
+    });
+    if (owned.length !== projectIds.length) throw new CanvasOwnershipError();
+  }
+  if (input.backgroundImageResourceId && input.backgroundImageUrl) {
+    const resource = await database.imageResource.findFirst({
+      where: {
+        id: input.backgroundImageResourceId,
+        userId,
+        url: input.backgroundImageUrl,
+      },
+      select: { id: true },
+    });
+    if (!resource) throw new CanvasOwnershipError();
+  }
+  return {
+    ...input,
+    elements,
+    projects: input.projects.map((project) => ({
+      id: project.id,
+      ...normalizeProjectInput(project),
+    })),
+  };
+}
+
+function snapshotMetadata(snapshot: Awaited<ReturnType<typeof validateSnapshot>>) {
+  return {
+    version: 1,
+    revision: snapshot.revision,
+    theme: snapshot.theme,
+    backgroundColor: snapshot.backgroundColor,
+    backgroundImageUrl: snapshot.backgroundImageUrl,
+    profile: snapshot.profile,
+    projects: snapshot.projects,
+  };
 }
 
 function startingLayout(projects: { id: string }[]): CanvasElementInput[] {
@@ -518,6 +659,18 @@ export async function getCanvasEditorState(
       canvasDraftSavedAt: true,
       canvasPublishedAt: true,
       canvasHintDismissedAt: true,
+      canvasDraftRevision: true,
+      canvasDraftSnapshot: true,
+      username: true,
+      displayName: true,
+      bio: true,
+      school: true,
+      avatarUrl: true,
+      links: true,
+      theme: true,
+      canvasBackgroundColor: true,
+      canvasBackgroundImageUrl: true,
+      canvasBackgroundResourceId: true,
     },
   });
   const hasNewerDraft =
@@ -526,7 +679,7 @@ export async function getCanvasEditorState(
       user.canvasDraftSavedAt > user.canvasPublishedAt);
   const state = hasNewerDraft ? "DRAFT" : "PUBLISHED";
 
-  const [elements, projects] = await Promise.all([
+  const [elements, projects, resources] = await Promise.all([
     user.canvasDraftSavedAt === null && user.canvasPublishedAt === null
       ? Promise.resolve([])
       : database.canvasElement.findMany({
@@ -538,15 +691,63 @@ export async function getCanvasEditorState(
       select: {
         id: true,
         title: true,
+        description: true,
+        category: true,
+        hashtags: true,
+        links: true,
+        layout: true,
+        private: true,
+        excludeFromFeed: true,
         media: {
-          select: { url: true },
+          select: { kind: true, url: true, mimeType: true },
           orderBy: { order: "asc" },
-          take: 1,
         },
       },
       orderBy: { createdAt: "desc" },
     }),
+    database.imageResource.findMany({
+      where: { userId, removedAt: null },
+      select: {
+        id: true,
+        url: true,
+        mimeType: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: "desc" },
+    }),
   ]);
+
+  const storedDraft = hasNewerDraft
+    ? canvasDraftMetadataSchema.safeParse(user.canvasDraftSnapshot)
+    : null;
+  const baselineProfile = profileContentInputSchema.parse({
+    displayName: user.displayName,
+    bio: user.bio ?? "",
+    school: user.school ?? "",
+    avatarUrl: user.avatarUrl ?? "",
+    links: Array.isArray(user.links) ? user.links : [],
+  });
+  const snapshot = storedDraft?.success
+    ? storedDraft.data
+    : {
+        version: 1 as const,
+        revision: user.canvasDraftRevision,
+        theme: PROFILE_THEMES.includes(user.theme as (typeof PROFILE_THEMES)[number])
+          ? (user.theme as (typeof PROFILE_THEMES)[number])
+          : "default" as const,
+        backgroundColor: user.canvasBackgroundColor,
+        backgroundImageUrl: user.canvasBackgroundImageUrl,
+        backgroundImageResourceId: user.canvasBackgroundResourceId,
+        profile: baselineProfile,
+        projects: projects.map((project) => ({
+          ...project,
+          media: project.media.map((media) => ({
+            kind: media.kind,
+            url: media.url,
+            mimeType: media.mimeType,
+          })),
+        })),
+      };
 
   const placedTypes = new Set(elements.map((element) => element.type));
   const placedProjectIds = new Set(
@@ -568,6 +769,10 @@ export async function getCanvasEditorState(
       minHeight: CANVAS_MIN_HEIGHT,
     },
     elements,
+    ownerUserId: userId,
+    username: user.username,
+    snapshot,
+    resources,
     library: [
       { type: "AVATAR" as const, placed: placedTypes.has("AVATAR") },
       { type: "NAME" as const, placed: placedTypes.has("NAME") },
@@ -599,66 +804,148 @@ export async function dismissCanvasHint(
 
 export async function saveCanvasDraft(
   userId: string,
-  rawElements: unknown,
+  rawSnapshot: unknown,
   database: PrismaClient = db,
 ) {
-  const elements = await validateAndClampElements(
-    userId,
-    rawElements,
-    database,
-  );
+  const snapshot = await validateSnapshot(userId, rawSnapshot, database);
   const savedAt = new Date();
 
   await database.$transaction(async (transaction) => {
+    const claimed = await transaction.user.updateMany({
+      where: {
+        id: userId,
+        canvasDraftRevision: { lt: snapshot.revision },
+      },
+      data: {
+        canvasDraftRevision: snapshot.revision,
+        canvasDraftSavedAt: savedAt,
+        canvasDraftSnapshot: snapshotMetadata(snapshot),
+      },
+    });
+    // A save for the same revision has already landed, or a newer publish/save
+    // won the race. In either case this stale request must not replace rows.
+    if (claimed.count === 0) return;
     await transaction.canvasElement.deleteMany({
       where: { userId, state: "DRAFT" },
     });
-    if (elements.length > 0) {
+    if (snapshot.elements.length > 0) {
       await transaction.canvasElement.createMany({
-        data: createRows(userId, "DRAFT", elements),
+        data: createRows(userId, "DRAFT", snapshot.elements),
       });
     }
-    await transaction.user.update({
-      where: { id: userId },
-      data: { canvasDraftSavedAt: savedAt },
-    });
   });
 
-  return elements;
+  return { elements: snapshot.elements, revision: snapshot.revision };
 }
 
 export async function publishCanvasLayout(
   userId: string,
-  rawElements: unknown,
+  rawSnapshot: unknown,
   database: PrismaClient = db,
 ) {
-  const elements = await validateAndClampElements(
-    userId,
-    rawElements,
-    database,
-  );
+  const snapshot = await validateSnapshot(userId, rawSnapshot, database);
   const publishedAt = new Date();
+  const nullable = (value: string | undefined) =>
+    value && value.length > 0 ? value : null;
 
   await database.$transaction(async (transaction) => {
+    const claimed = await transaction.user.updateMany({
+      where: {
+        id: userId,
+        canvasDraftRevision: { lte: snapshot.revision },
+      },
+      data: { canvasDraftRevision: snapshot.revision },
+    });
+    if (claimed.count === 0) throw new CanvasDraftConflictError();
+
     await transaction.canvasElement.deleteMany({
       where: { userId, state: { in: ["DRAFT", "PUBLISHED"] } },
     });
-    if (elements.length > 0) {
+    if (snapshot.elements.length > 0) {
       await transaction.canvasElement.createMany({
-        data: createRows(userId, "DRAFT", elements),
+        data: createRows(userId, "DRAFT", snapshot.elements),
       });
       await transaction.canvasElement.createMany({
-        data: createRows(userId, "PUBLISHED", elements),
+        data: createRows(userId, "PUBLISHED", snapshot.elements),
       });
     }
+
+    for (const project of snapshot.projects) {
+      await transaction.project.update({
+        where: { id: project.id, userId },
+        data: {
+          title: project.title,
+          description: project.description,
+          category: project.category,
+          hashtags: project.hashtags,
+          links: project.links,
+          layout: project.layout,
+          private: project.private,
+          excludeFromFeed: project.excludeFromFeed,
+          media: { deleteMany: {}, create: project.media },
+        },
+      });
+    }
+
     await transaction.user.update({
       where: { id: userId },
       data: {
+        displayName: snapshot.profile.displayName,
+        bio: nullable(snapshot.profile.bio),
+        school: nullable(snapshot.profile.school),
+        avatarUrl: nullable(snapshot.profile.avatarUrl),
+        links: snapshot.profile.links,
+        theme: snapshot.theme,
+        canvasBackgroundColor: snapshot.backgroundColor,
+        canvasBackgroundImageUrl: snapshot.backgroundImageUrl,
+        canvasBackgroundResourceId: snapshot.backgroundImageResourceId,
+        canvasDraftRevision: snapshot.revision,
+        canvasDraftSnapshot: snapshotMetadata(snapshot),
         canvasDraftSavedAt: publishedAt,
         canvasPublishedAt: publishedAt,
       },
     });
   });
 
-  return elements;
+  return { elements: snapshot.elements, revision: snapshot.revision };
+}
+
+export async function validateCanvasClipboard(
+  userId: string,
+  username: string,
+  rawPayload: unknown,
+  database: PrismaClient = db,
+) {
+  const parsed = canvasClipboardPayloadSchema.safeParse(rawPayload);
+  if (!parsed.success) throw new CanvasClipboardError();
+  if (
+    parsed.data.ownerUserId !== userId ||
+    parsed.data.profileUsername.toLowerCase() !== username.toLowerCase()
+  ) {
+    throw new CanvasClipboardError(
+      "Cards copied from another profile cannot be pasted here.",
+    );
+  }
+  try {
+    return await validateAndClampElements(userId, parsed.data.cards, database);
+  } catch (error) {
+    if (error instanceof CanvasOwnershipError) {
+      throw new CanvasClipboardError();
+    }
+    throw error;
+  }
+}
+
+export async function setImageResourceRemoved(
+  userId: string,
+  resourceId: string,
+  removed: boolean,
+  database: PrismaClient = db,
+) {
+  const result = await database.imageResource.updateMany({
+    where: { id: resourceId, userId },
+    data: { removedAt: removed ? new Date() : null },
+  });
+  if (result.count !== 1) throw new CanvasOwnershipError();
+  return { id: resourceId, removed };
 }

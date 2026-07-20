@@ -32,7 +32,7 @@ export const projectInputSchema = z.object({
 
 export type ProjectInput = z.infer<typeof projectInputSchema>;
 
-function normalizeInput(rawInput: ProjectInput) {
+export function normalizeProjectInput(rawInput: ProjectInput) {
   const input = projectInputSchema.parse(rawInput);
   return {
     ...input,
@@ -51,7 +51,7 @@ export async function createProject(
   rawInput: ProjectInput,
   projects: ProjectDelegate = db.project,
 ) {
-  const input = normalizeInput(rawInput);
+  const input = normalizeProjectInput(rawInput);
   return projects.create({
     data: {
       userId,
@@ -85,7 +85,7 @@ export async function updateProject(
   if (!existing) throw new ProjectNotFoundError();
   if (existing.userId !== userId) throw new ProjectOwnershipError();
 
-  const input = normalizeInput(rawInput);
+  const input = normalizeProjectInput(rawInput);
   return projects.update({
     where: { id: projectId },
     data: {
