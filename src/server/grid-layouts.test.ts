@@ -10,9 +10,11 @@ import {
   GridLayoutOwnershipError,
   GridLayoutUnavailableError,
   gridProjectSaveInputSchema,
+  gridSaveInputSchema,
   publishProfileGrid,
   publishProjectGrid,
   saveProfileGridDraft,
+  serializePublicGridLayout,
 } from "~/server/grid-layouts";
 
 type LayoutScope = "PROFILE" | "PROJECT";
@@ -139,6 +141,67 @@ describe("grid layout input schemas", () => {
         blocks: [textBlock("project-text", 0)],
       }).success,
     ).toBe(true);
+  });
+
+  it("restricts projectId to PROJECT blocks while allowing selected and empty PROJECT blocks", () => {
+    expect(
+      gridSaveInputSchema.safeParse({
+        expectedRevision: 0,
+        blocks: [textBlock("crafted-text", 0, { projectId: "project-2" })],
+      }).success,
+    ).toBe(false);
+    expect(
+      gridSaveInputSchema.safeParse({
+        expectedRevision: 0,
+        blocks: [projectBlock("selected-project", 0, "project-1")],
+      }).success,
+    ).toBe(true);
+    expect(
+      gridSaveInputSchema.safeParse({
+        expectedRevision: 0,
+        blocks: [
+          projectBlock("empty-project", 0, "project-1", { projectId: null }),
+        ],
+      }).success,
+    ).toBe(true);
+  });
+});
+
+describe("public grid layout serialization", () => {
+  const privateProject = {
+    id: "project-2",
+    title: "Private project",
+    description: "Must not leak",
+    private: true,
+    media: [{ url: "/private.png", mimeType: "image/png" }],
+  };
+
+  it("does not serialize a private project nested on a legacy non-PROJECT row", () => {
+    const legacyText = textBlock("legacy-text", 0, {
+      projectId: privateProject.id,
+    });
+
+    expect(
+      serializePublicGridLayout(
+        { blocks: [{ ...legacyText, project: privateProject }] },
+        false,
+      ),
+    ).toEqual({ blocks: [legacyText], projects: [] });
+  });
+
+  it("excludes a private PROJECT row and project for a non-owner", () => {
+    const privateProjectBlock = projectBlock(
+      "private-project",
+      0,
+      privateProject.id,
+    );
+
+    expect(
+      serializePublicGridLayout(
+        { blocks: [{ ...privateProjectBlock, project: privateProject }] },
+        false,
+      ),
+    ).toEqual({ blocks: [], projects: [] });
   });
 });
 

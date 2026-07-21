@@ -86,12 +86,15 @@ export function serializePublicGridLayout(
       (block.project !== null && !block.project.private),
   );
   const referencedProjectIds = new Set(
-    visibleRows.flatMap((block) => (block.projectId ? [block.projectId] : [])),
+    visibleRows.flatMap((block) =>
+      block.type === "PROJECT" && block.projectId ? [block.projectId] : [],
+    ),
   );
   const seenProjectIds = new Set<string>();
   const publicProjects: PublicGridProject[] = [];
 
   for (const block of visibleRows) {
+    if (block.type !== "PROJECT") continue;
     const project = block.project;
     if (
       !project ||
@@ -100,6 +103,7 @@ export function serializePublicGridLayout(
     ) {
       continue;
     }
+    if (!isOwner && project.private) continue;
     seenProjectIds.add(project.id);
     publicProjects.push({
       id: project.id,
@@ -165,7 +169,16 @@ const gridBlockSchema: z.ZodType<GridBlock> = z
     linkLabel: z.string().nullable(),
     linkUrl: z.string().nullable(),
   })
-  .strict();
+  .strict()
+  .superRefine((block, context) => {
+    if (block.type !== "PROJECT" && block.projectId !== null) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "projectId is only valid for PROJECT blocks.",
+        path: ["projectId"],
+      });
+    }
+  });
 
 const gridSaveInputShape = {
   expectedRevision: z.number().int().nonnegative(),
