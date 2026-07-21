@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { TRPCError } from "@trpc/server";
 
+import { GridLayoutEditor } from "~/app/grid-layout-editor";
 import { getServerCaller } from "~/server/api/caller";
 import { categoryLabels } from "~/server/categories";
 import { CanvasEditor } from "./canvas-editor";
@@ -26,10 +28,19 @@ export default async function CanvasEditorPage() {
   const profile = await caller.profile.me();
   const isCanvas = profile.layoutMode === "CANVAS";
 
-  // Only the canvas editor needs the project list; the grid state does not.
-  const projects = isCanvas
-    ? await caller.project.listByUsername({ username: profile.username })
-    : [];
+  const [projects, gridLayout] = await Promise.all([
+    isCanvas
+      ? caller.project.listByUsername({ username: profile.username })
+      : Promise.resolve([]),
+    isCanvas
+      ? Promise.resolve(null)
+      : caller.grid.profileEditorState().catch((error: unknown) => {
+          if (error instanceof TRPCError && error.code === "NOT_FOUND") {
+            return null;
+          }
+          throw error;
+        }),
+  ]);
 
   // Category badge labels are derived per-project, matching the fixed header /
   // getPublicProfile — the Categories element is read-only and follows this.
@@ -42,18 +53,18 @@ export default async function CanvasEditorPage() {
       className={
         isCanvas
           ? "mx-auto w-full max-w-[1480px] px-6 py-14"
-          : "mx-auto w-full max-w-3xl px-6 py-14"
+          : "mx-auto w-full max-w-[1480px] px-6 py-14"
       }
     >
       <div className="flex flex-wrap items-baseline justify-between gap-4">
         <div>
           <h1 className="font-display text-ink text-3xl font-semibold tracking-tight">
-            Canvas layout
+            {isCanvas ? "Canvas layout" : "Grid layout"}
           </h1>
           <p className="text-muted mt-2">
             {isCanvas
               ? `Drag, resize, and overlap elements, then Save Layout to publish them to /${profile.username}.`
-              : "Choose the canvas layout to arrange your profile freely, right here."}
+              : `Arrange blocks, save a private draft, and publish them to /${profile.username}.`}
           </p>
         </div>
         <Link
@@ -89,10 +100,12 @@ export default async function CanvasEditorPage() {
             })),
           }))}
         />
+      ) : gridLayout ? (
+        <GridLayoutEditor scope="profile" initial={gridLayout} />
       ) : (
         <p className="text-muted mt-6">
-          Your profile is currently using the grid layout. Switch to Canvas
-          above to start arranging it here.
+          Your existing layout remains published, but it exceeds the 50-block
+          editor limit. The Grid editor is unavailable for this profile.
         </p>
       )}
     </section>

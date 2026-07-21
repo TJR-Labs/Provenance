@@ -1,5 +1,8 @@
+import { TRPCError } from "@trpc/server";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { classifyProjectMedia } from "~/lib/project-media";
 import { getServerCaller } from "~/server/api/caller";
 import { auth } from "~/server/auth";
 import { categories, categoryLabels } from "~/server/categories";
@@ -16,18 +19,47 @@ export default async function EditProjectPage({
   searchParams,
 }: EditProjectPageProps) {
   const { id } = await params;
+  const caller = await getServerCaller();
   const [project, session, query] = await Promise.all([
-    (await getServerCaller()).project.getById({ id }),
+    caller.project.getById({ id }),
     auth(),
     searchParams,
   ]);
   if (!project || project.user.id !== session?.user.id) notFound();
 
+  let layoutEditorAvailable = false;
+  const hasVideo = project.media.some(
+    (media) => classifyProjectMedia(media) === "video",
+  );
+  if (!hasVideo) {
+    try {
+      await caller.grid.projectEditorState({ projectId: project.id });
+      layoutEditorAvailable = true;
+    } catch (error) {
+      if (
+        !(error instanceof TRPCError) ||
+        (error.code !== "NOT_FOUND" && error.code !== "FORBIDDEN")
+      ) {
+        throw error;
+      }
+    }
+  }
+
   return (
     <section className="mx-auto w-full max-w-3xl px-6 py-14">
-      <h1 className="font-display text-ink text-3xl font-semibold tracking-tight">
-        Edit project
-      </h1>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h1 className="font-display text-ink text-3xl font-semibold tracking-tight">
+          Edit project
+        </h1>
+        {layoutEditorAvailable ? (
+          <Link
+            href={`/projects/${project.id}/layout`}
+            className="border-line-strong text-ink hover:border-accent hover:text-accent rounded-md border px-4 py-2 text-sm font-semibold transition-colors"
+          >
+            Edit layout
+          </Link>
+        ) : null}
+      </div>
       <ProjectForm
         action={saveProjectAction.bind(null, project.id)}
         categories={categories.map((value) => ({

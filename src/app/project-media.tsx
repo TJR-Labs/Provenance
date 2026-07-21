@@ -5,16 +5,9 @@
 import { useState } from "react";
 
 import { safeExternalUrl } from "~/app/safe-external-url";
+import { classifyProjectMedia } from "~/lib/project-media";
 
 type Media = { url: string; mimeType: string | null };
-
-function mediaType(media: Media) {
-  if (media.mimeType?.startsWith("image/")) return "image";
-  if (media.mimeType?.startsWith("video/")) return "video";
-  if (/\.(png|jpe?g|webp|gif)(\?|$)/i.test(media.url)) return "image";
-  if (/\.(mp4|webm)(\?|$)/i.test(media.url)) return "video";
-  return "link";
-}
 
 function MediaFallback({ label }: { label: string }) {
   return (
@@ -32,7 +25,7 @@ export function ProjectMedia({
   title: string;
 }) {
   const [failed, setFailed] = useState(false);
-  const type = mediaType(media);
+  const type = classifyProjectMedia(media);
   if (type === "image") {
     if (failed) return <MediaFallback label="Image unavailable" />;
     // User media has arbitrary Supabase/external hosts, so next/image cannot whitelist it.

@@ -19,6 +19,7 @@ export const profileRouter = createTRPCRouter({
         ctx.db.user,
         ctx.db.project,
         ctx.db.canvasElement,
+        ctx.db.gridLayout,
       ),
     ),
 

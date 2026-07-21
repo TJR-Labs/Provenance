@@ -1,7 +1,12 @@
 import { Category, MediaKind, type PrismaClient } from "../../generated/prisma";
 import { z } from "zod";
 
+import { classifyProjectMedia } from "~/lib/project-media";
 import { db } from "~/server/db";
+import {
+  publicGridBlockSelect,
+  serializePublicGridLayout,
+} from "~/server/grid-layouts";
 
 type ProjectDelegate = Pick<
   PrismaClient["project"],
@@ -9,6 +14,7 @@ type ProjectDelegate = Pick<
 >;
 type UserReader = Pick<PrismaClient["user"], "findUniqueOrThrow">;
 type CanvasElementReader = Pick<PrismaClient["canvasElement"], "findMany">;
+type GridLayoutReader = Pick<PrismaClient["gridLayout"], "findFirst">;
 
 export const projectLayouts = ["default", "gallery", "writeup"] as const;
 
@@ -124,6 +130,7 @@ export async function getPublicProject(
   projectId: string,
   viewerId: string | null,
   projects: ProjectDelegate = db.project,
+  gridLayouts: GridLayoutReader | undefined = db.gridLayout,
 ) {
   const project = await projects.findFirst({
     where: { id: projectId, user: { banned: false } },
@@ -146,7 +153,37 @@ export async function getPublicProject(
   ) {
     return null;
   }
-  return project;
+  if (
+    !gridLayouts ||
+    project.media.some((media) => classifyProjectMedia(media) === "video")
+  ) {
+    return project;
+  }
+
+  const publishedGridLayout = await gridLayouts.findFirst({
+    where: {
+      ownerId: project.userId,
+      projectId: project.id,
+      scope: "PROJECT",
+      state: "PUBLISHED",
+    },
+    select: {
+      blocks: {
+        orderBy: [{ order: "asc" }, { key: "asc" }],
+        select: publicGridBlockSelect,
+      },
+    },
+  });
+
+  return publishedGridLayout
+    ? {
+        ...project,
+        gridLayout: serializePublicGridLayout(
+          publishedGridLayout,
+          project.userId === viewerId,
+        ),
+      }
+    : project;
 }
 
 export function listProjectsByUsername(

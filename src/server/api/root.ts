@@ -1,5 +1,6 @@
 import { canvasRouter } from "~/server/api/routers/canvas";
 import { discoveryRouter } from "~/server/api/routers/discovery";
+import { gridRouter } from "~/server/api/routers/grid";
 import { healthRouter } from "~/server/api/routers/health";
 import { moderationRouter } from "~/server/api/routers/moderation";
 import { profileRouter } from "~/server/api/routers/profile";
@@ -15,6 +16,7 @@ import { createCallerFactory, createTRPCRouter } from "~/server/api/trpc";
 export const appRouter = createTRPCRouter({
   canvas: canvasRouter,
   discovery: discoveryRouter,
+  grid: gridRouter,
   health: healthRouter,
   moderation: moderationRouter,
   profile: profileRouter,

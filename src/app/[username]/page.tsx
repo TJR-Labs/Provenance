@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { GridLayoutRenderer } from "~/app/grid-layout-renderer";
 import { ProjectCard } from "~/app/project-card";
 import { reportProfileAction } from "~/app/report-actions";
 import { safeExternalUrl } from "~/app/safe-external-url";
@@ -176,6 +177,13 @@ export default async function ProfilePage({
               avatarUrl: profile.avatarUrl,
               categories: profile.categories,
             }}
+          />
+        ) : profile.gridLayout ? (
+          <GridLayoutRenderer
+            blocks={profile.gridLayout.blocks}
+            projects={profile.gridLayout.projects}
+            mode="responsive"
+            ownerView={session?.user.id === profile.id}
           />
         ) : (
           sections.map((section) => {

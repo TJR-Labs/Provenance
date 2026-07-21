@@ -64,7 +64,12 @@ export const projectRouter = createTRPCRouter({
   getById: publicProcedure
     .input(z.object({ id: z.string().min(1) }))
     .query(({ ctx, input }) =>
-      getPublicProject(input.id, ctx.session?.user?.id ?? null, ctx.db.project),
+      getPublicProject(
+        input.id,
+        ctx.session?.user?.id ?? null,
+        ctx.db.project,
+        ctx.db.gridLayout,
+      ),
     ),
 
   listMine: protectedProcedure.query(({ ctx }) =>

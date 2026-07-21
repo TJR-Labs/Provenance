@@ -58,6 +58,23 @@ enum CanvasElementState {
   PUBLISHED
 }
 
+enum GridLayoutScope {
+  PROFILE
+  PROJECT
+}
+
+enum GridLayoutState {
+  DRAFT
+  PUBLISHED
+}
+
+enum GridBlockType {
+  PROJECT
+  IMAGE
+  TEXT
+  LINK
+}
+
 model User {
   id                         String            @id @default(cuid())
   username                   String            @unique
@@ -93,6 +110,7 @@ model User {
   oauthLinkIntents           OAuthLinkIntent[]
   canvasElements             CanvasElement[]
   imageResources             ImageResource[]
+  gridLayouts                GridLayout[]      @relation("OwnedGridLayouts")
 
   @@index([canvasBackgroundResourceId])
 }
@@ -174,9 +192,54 @@ model Project {
   media           ProjectMedia[]
   reports         Report[]
   canvasElements  CanvasElement[]
+  gridLayouts     GridLayout[]
+  gridBlocks      GridBlock[]      @relation("GridBlockProject")
 
+  @@unique([id, userId])
   @@index([userId])
   @@index([category])
+}
+
+model GridLayout {
+  id        String          @id @default(cuid())
+  ownerId   String
+  owner     User            @relation("OwnedGridLayouts", fields: [ownerId], references: [id], onDelete: Cascade)
+  projectId String?
+  project   Project?        @relation(fields: [projectId, ownerId], references: [id, userId], onDelete: Cascade)
+  scope     GridLayoutScope
+  state     GridLayoutState
+  revision  Int             @default(0)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  blocks    GridBlock[]
+
+  @@index([ownerId, scope, state])
+  @@index([projectId, state])
+}
+
+model GridBlock {
+  id            String        @id @default(cuid())
+  layoutId      String
+  layout        GridLayout    @relation(fields: [layoutId], references: [id], onDelete: Cascade)
+  key           String
+  order         Int
+  type          GridBlockType
+  x             Int
+  y             Int
+  width         Int
+  height        Int
+  projectId     String?
+  project       Project?      @relation("GridBlockProject", fields: [projectId], references: [id], onDelete: SetNull)
+  textContent   String?
+  imageUrl      String?
+  imageMimeType String?
+  imageAlt      String?
+  linkLabel     String?
+  linkUrl       String?
+
+  @@unique([layoutId, key])
+  @@unique([layoutId, order])
+  @@index([projectId])
 }
 
 model CanvasElement {

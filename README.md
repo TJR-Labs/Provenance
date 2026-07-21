@@ -36,6 +36,17 @@ npm test
 npm run build
 ```
 
+### Grid layout migration
+
+After deploying the Grid layout schema, convert eligible legacy profile and project content with this idempotent sequence:
+
+```powershell
+npm run db:migrate
+npm run grid:migrate
+```
+
+The migration prints exact counts for migrated profiles and projects, records that were already migrated, and records skipped because they contain video or require more than 50 blocks. Skipped video and oversized records remain on the legacy renderer with all existing content intact. Rerunning the command does not duplicate layouts or replace owner edits.
+
 The login lockout remains ten failed attempts within fifteen minutes, followed by a fifteen-minute lock. Public visitors can browse `/`, profiles at `/<username>`, and project pages without signing in. Signed-in users can edit their profile, manage projects, and submit reports. Administrators review reports at `/admin/reports`.
 
 The public `/terms` and `/privacy` pages remain structural placeholders and require legal review before launch.
