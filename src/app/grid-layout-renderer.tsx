@@ -133,7 +133,9 @@ function BlockContent({
 
   if (block.type === "LINK") {
     const linkUrl = block.linkUrl!;
-    const label = block.linkLabel?.trim() || linkUrl;
+    const trimmedLabel = block.linkLabel?.trim();
+    let label = linkUrl;
+    if (trimmedLabel) label = trimmedLabel;
     const href = safeExternalUrl(linkUrl);
     if (!href) {
       return (

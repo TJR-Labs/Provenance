@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+import { uploadFileDirect } from "~/lib/direct-upload";
+
 type MediaItem = {
   kind: "UPLOAD" | "EXTERNAL";
   url: string;
@@ -39,22 +41,13 @@ export function ProjectForm({
   async function upload(file: File) {
     setUploading(true);
     setUploadError("");
-    const body = new FormData();
-    body.set("file", file);
     try {
-      const response = await fetch("/api/upload", { method: "POST", body });
-      const result = (await response.json()) as {
-        url?: string;
-        mimeType?: string;
-        error?: string;
-      };
-      if (!response.ok || !result.url)
-        throw new Error(result.error ?? "Upload failed.");
+      const result = await uploadFileDirect(file, "project-media");
       setMedia((items) => [
         ...items,
         {
           kind: "UPLOAD",
-          url: result.url!,
+          url: result.url,
           mimeType: result.mimeType ?? file.type,
         },
       ]);

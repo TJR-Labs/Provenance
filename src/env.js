@@ -21,6 +21,10 @@ export const env = createEnv({
     SUPABASE_URL: z.string().url().optional(),
     SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
     SUPABASE_STORAGE_BUCKET: z.string().min(1).default("project-media"),
+    SUPABASE_STORAGE_STAGING_BUCKET: z
+      .string()
+      .min(1)
+      .default("upload-staging"),
     NODE_ENV: z
       .enum(["development", "test", "production"])
       .default("development"),
@@ -51,6 +55,8 @@ export const env = createEnv({
     SUPABASE_URL: process.env.SUPABASE_URL,
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
     SUPABASE_STORAGE_BUCKET: process.env.SUPABASE_STORAGE_BUCKET,
+    SUPABASE_STORAGE_STAGING_BUCKET:
+      process.env.SUPABASE_STORAGE_STAGING_BUCKET,
     NODE_ENV: process.env.NODE_ENV,
   },
   /**

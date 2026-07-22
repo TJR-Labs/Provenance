@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("~/server/db", () => ({ db: {} }));
 
 import { getPublicProfile } from "~/server/profiles";
+import { publicGridBlockSelect } from "~/server/grid-layouts";
 
 function profile(overrides: Record<string, unknown> = {}) {
   return {
@@ -193,7 +194,7 @@ describe("getPublicProfile", () => {
       users,
       projects,
       canvasElements,
-      gridLayouts as never,
+      gridLayouts,
     );
 
     expect(gridLayouts.findFirst).toHaveBeenCalledWith({
@@ -201,10 +202,7 @@ describe("getPublicProfile", () => {
       select: {
         blocks: {
           orderBy: [{ order: "asc" }, { key: "asc" }],
-          select: expect.objectContaining({
-            key: true,
-            project: expect.any(Object),
-          }),
+          select: publicGridBlockSelect,
         },
       },
     });
@@ -285,7 +283,7 @@ describe("getPublicProfile", () => {
       users,
       projects,
       canvasElements,
-      gridLayouts as never,
+      gridLayouts,
     );
     expect(publicResult).toMatchObject({
       gridLayout: { blocks: [{ projectId: "p1" }], projects: [{ id: "p1" }] },
@@ -297,7 +295,7 @@ describe("getPublicProfile", () => {
       users,
       projects,
       canvasElements,
-      gridLayouts as never,
+      gridLayouts,
     );
     expect(newlyPrivateResult).toMatchObject({
       gridLayout: { blocks: [], projects: [] },
@@ -309,7 +307,7 @@ describe("getPublicProfile", () => {
       users,
       projects,
       canvasElements,
-      gridLayouts as never,
+      gridLayouts,
     );
     expect(ownerPrivateResult).toMatchObject({
       gridLayout: {
@@ -324,7 +322,7 @@ describe("getPublicProfile", () => {
       users,
       projects,
       canvasElements,
-      gridLayouts as never,
+      gridLayouts,
     );
     expect(ownerDeletedResult).toMatchObject({
       gridLayout: { blocks: [{ projectId: "p1" }], projects: [] },
@@ -336,7 +334,7 @@ describe("getPublicProfile", () => {
       users,
       projects,
       canvasElements,
-      gridLayouts as never,
+      gridLayouts,
     );
     expect(viewerDeletedResult).toMatchObject({
       gridLayout: { blocks: [], projects: [] },
@@ -363,7 +361,7 @@ describe("getPublicProfile", () => {
       users,
       projects,
       canvasElements,
-      gridLayouts as never,
+      gridLayouts,
     );
 
     expect(result).toMatchObject({

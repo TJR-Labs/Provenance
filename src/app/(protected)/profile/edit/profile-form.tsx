@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 
 import { safeExternalUrl } from "~/app/safe-external-url";
+import { uploadFileDirect } from "~/lib/direct-upload";
 
 type Section = "about" | "projects" | "links";
 type LayoutMode = "GRID" | "CANVAS";
@@ -193,19 +194,8 @@ export function ProfileForm({
   async function upload(file: File) {
     setUploading(true);
     setUploadError("");
-    const formData = new FormData();
-    formData.set("file", file);
     try {
-      const response = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-      const result = (await response.json()) as {
-        url?: string;
-        error?: string;
-      };
-      if (!response.ok || !result.url)
-        throw new Error(result.error ?? "Upload failed.");
+      const result = await uploadFileDirect(file, "avatar");
       setAvatarUrl(result.url);
     } catch (caught) {
       setUploadError(

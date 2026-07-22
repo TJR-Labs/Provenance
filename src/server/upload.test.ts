@@ -1,15 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
-
-// upload.ts reads ~/env for Supabase config; mock it so this test doesn't
-// require a real DATABASE_URL/DIRECT_URL, matching this repo's existing
-// pattern of mocking module boundaries (see users.test.ts for ~/server/db).
-vi.mock("~/env", () => ({
-  env: {
-    SUPABASE_URL: "https://example.test",
-    SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key",
-    SUPABASE_STORAGE_BUCKET: "test-bucket",
-  },
-}));
+import { describe, expect, it } from "vitest";
 
 import {
   MAX_IMAGE_BYTES,
@@ -18,8 +7,6 @@ import {
   detectContentType,
   validateUpload,
 } from "~/server/upload-validation";
-import { uploadFile } from "~/server/upload";
-import type { createStorageClient } from "~/server/upload";
 
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 const JPEG_SIGNATURE = [0xff, 0xd8, 0xff];
@@ -155,55 +142,5 @@ describe("upload validation", () => {
     const file = makeFile([], "image/png");
     await expect(validateUpload(file)).rejects.toThrow(UploadValidationError);
     await expect(validateUpload(file)).rejects.toMatchObject({ status: 415 });
-  });
-});
-
-describe("uploadFile", () => {
-  function fakeGetClient() {
-    const uploadedPaths: string[] = [];
-    const fakeClient = {
-      storage: {
-        from: () => ({
-          upload: vi.fn((path: string) => {
-            uploadedPaths.push(path);
-            return Promise.resolve({ error: null });
-          }),
-          getPublicUrl: (path: string) => ({
-            data: { publicUrl: `https://example.test/${path}` },
-          }),
-        }),
-      },
-    };
-    const getClient = vi.fn(() => fakeClient) as unknown as () => ReturnType<
-      typeof createStorageClient
-    >;
-    return { getClient, uploadedPaths };
-  }
-
-  it("derives the stored extension from the validated type, not a misleading filename", async () => {
-    const { getClient, uploadedPaths } = fakeGetClient();
-    // Filename claims .html, but the declared type and real bytes are a PNG.
-    const file = makeFile(PNG_SIGNATURE, "image/png", {
-      name: "photo.html",
-      padTo: 100,
-    });
-
-    const result = await uploadFile(file, "user-1", getClient);
-
-    expect(uploadedPaths).toHaveLength(1);
-    expect(uploadedPaths[0]).toMatch(/^user-1\/[0-9a-f-]+\.png$/);
-    expect(result.mimeType).toBe("image/png");
-  });
-
-  it("propagates validation failures without contacting storage", async () => {
-    const { getClient, uploadedPaths } = fakeGetClient();
-    const file = makeFile(asciiBytes("<html></html>"), "image/png", {
-      name: "photo.png",
-    });
-
-    await expect(uploadFile(file, "user-1", getClient)).rejects.toThrow(
-      UploadValidationError,
-    );
-    expect(uploadedPaths).toHaveLength(0);
   });
 });

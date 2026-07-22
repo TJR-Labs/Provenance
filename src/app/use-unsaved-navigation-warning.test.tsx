@@ -2,6 +2,7 @@
  * @vitest-environment jsdom
  */
 import { cleanup, fireEvent, render } from "@testing-library/react";
+import Link from "next/link";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useUnsavedNavigationWarning } from "./use-unsaved-navigation-warning";
@@ -10,7 +11,7 @@ function Harness({ dirty }: { dirty: boolean }) {
   useUnsavedNavigationWarning(dirty);
   return (
     <div>
-      <a href="/account">Account</a>
+      <Link href="/account">Account</Link>
       <a href="https://elsewhere.example/path">External</a>
     </div>
   );

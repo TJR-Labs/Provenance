@@ -14,6 +14,7 @@ import {
 
 import { ProjectCard } from "~/app/project-card";
 import { safeExternalUrl } from "~/app/safe-external-url";
+import { uploadFileDirect } from "~/lib/direct-upload";
 import {
   applyProjectCardOverrides,
   CARD_LAYOUTS,
@@ -1101,18 +1102,10 @@ export function CanvasEditor({
         : new File([blob], "pasted-image", {
             type: blob.type || "image/png",
           });
-    const body = new FormData();
-    body.set("file", file);
-    body.set("purpose", "canvas-resource");
     try {
-      const response = await fetch("/api/upload", { method: "POST", body });
-      const result = (await response.json()) as {
-        url?: string;
-        resource?: { id: string };
-        error?: string;
-      };
-      if (!response.ok || !result.url || !result.resource) {
-        throw new Error(result.error ?? "Upload failed.");
+      const result = await uploadFileDirect(file, "canvas-resource");
+      if (!result.resource) {
+        throw new Error("Upload failed.");
       }
       const current = elementsRef.current;
       if (!current) return;
@@ -1769,25 +1762,17 @@ export function CanvasEditor({
     markDirty();
   }
 
-  // Upload a custom background image. The endpoint validates + stores the file
-  // and creates an ImageResource in one call, so the image is also added to the
-  // Resources library (spec 55) for free. On failure the prior background is
+  // Upload a custom background image. Finalization validates + stores the file
+  // and creates an ImageResource, so the image is also added to the Resources
+  // library (spec 55) for free. On failure the prior background is
   // left untouched and no resource/card is created (spec 8 edge case).
   async function uploadBackgroundImage(file: File) {
     setBackgroundUploading(true);
     setBackgroundError(null);
-    const body = new FormData();
-    body.set("file", file);
-    body.set("purpose", "canvas-resource");
     try {
-      const response = await fetch("/api/upload", { method: "POST", body });
-      const result = (await response.json()) as {
-        url?: string;
-        resource?: { id: string };
-        error?: string;
-      };
-      if (!response.ok || !result.url || !result.resource) {
-        throw new Error(result.error ?? "Upload failed.");
+      const result = await uploadFileDirect(file, "canvas-resource");
+      if (!result.resource) {
+        throw new Error("Upload failed.");
       }
       commitHistory();
       backgroundImageUrlRef.current = result.url;
@@ -3245,19 +3230,8 @@ function AvatarProfileFields({
   async function upload(file: File) {
     setUploading(true);
     setError("");
-    const formData = new FormData();
-    formData.set("file", file);
     try {
-      const response = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-      const result = (await response.json()) as {
-        url?: string;
-        error?: string;
-      };
-      if (!response.ok || !result.url)
-        throw new Error(result.error ?? "Upload failed.");
+      const result = await uploadFileDirect(file, "canvas-resource");
       onApply(result.url);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Upload failed.");
@@ -3607,16 +3581,8 @@ function ImagePanel({
   async function upload(file: File) {
     setUploading(true);
     setError("");
-    const body = new FormData();
-    body.set("file", file);
     try {
-      const response = await fetch("/api/upload", { method: "POST", body });
-      const result = (await response.json()) as {
-        url?: string;
-        error?: string;
-      };
-      if (!response.ok || !result.url)
-        throw new Error(result.error ?? "Upload failed.");
+      const result = await uploadFileDirect(file, "canvas-resource");
       setImageUrl(result.url);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Upload failed.");

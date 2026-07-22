@@ -209,6 +209,29 @@ function baseData(overrides: Partial<EditorStateData> = {}): EditorStateData {
   };
 }
 
+function directUploadFetchMock(result: Record<string, unknown>) {
+  return vi
+    .fn<
+      (
+        input: string,
+        init?: RequestInit,
+      ) => Promise<{
+        ok: boolean;
+        json?: () => Promise<Record<string, unknown>>;
+      }>
+    >()
+    .mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        intentId: "intent-1",
+        uploadUrl: "https://storage.example.test/signed-upload",
+        purpose: "canvas-resource",
+      }),
+    })
+    .mockResolvedValueOnce({ ok: true })
+    .mockResolvedValueOnce({ ok: true, json: async () => result });
+}
+
 function placedTextElement(): ServerElement {
   return {
     id: "element-1",
@@ -1215,9 +1238,7 @@ describe("explicit Layer menu actions", () => {
     });
     const user = userEvent.setup();
     renderEditor();
-    const undo = screen.getByRole<HTMLButtonElement>("button", {
-      name: "Undo",
-    });
+    const undo = screen.getByRole<HTMLButtonElement>("button", { name: "Undo" });
 
     fireEvent.contextMenu(canvasCard("element-3"), {
       clientX: 810,
@@ -1485,7 +1506,9 @@ describe("the operating-system clipboard", () => {
 
     await waitFor(() => expect(screen.queryByText("Hello world")).toBeNull());
     expect(clipboard.writeText).toHaveBeenCalledTimes(1);
-    const undo = screen.getByRole<HTMLButtonElement>("button", { name: "Undo" });
+    const undo = screen.getByRole<HTMLButtonElement>("button", {
+      name: "Undo",
+    });
     expect(undo.disabled).toBe(false);
 
     await user.click(undo);
@@ -1595,21 +1618,11 @@ describe("the operating-system clipboard", () => {
       isPending: false,
       data: baseData(),
     });
-    const fetchMock = vi
-      .fn<
-        (
-          input: string,
-          init?: RequestInit,
-        ) => Promise<{ ok: boolean; json: () => Promise<unknown> }>
-      >()
-      .mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          url: "https://example.com/pasted.png",
-          mimeType: "image/png",
-          resource: { id: "resource-9", url: "https://example.com/pasted.png" },
-        }),
-      });
+    const fetchMock = directUploadFetchMock({
+      url: "https://example.com/pasted.png",
+      mimeType: "image/png",
+      resource: { id: "resource-9", url: "https://example.com/pasted.png" },
+    });
     vi.stubGlobal("fetch", fetchMock);
     const user = userEvent.setup();
     stubClipboard();
@@ -1620,12 +1633,19 @@ describe("the operating-system clipboard", () => {
       firePaste(window, { image: file });
     });
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/upload");
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/upload/intent");
     expect(fetchMock.mock.calls[0]?.[1]?.method).toBe("POST");
-    const body = fetchMock.mock.calls[0]?.[1]?.body as FormData;
-    expect(body).toBeInstanceOf(FormData);
-    expect(body.get("purpose")).toBe("canvas-resource");
+    expect(
+      JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string),
+    ).toMatchObject({
+      purpose: "canvas-resource",
+    });
+    expect(fetchMock.mock.calls[1]?.[0]).toBe(
+      "https://storage.example.test/signed-upload",
+    );
+    expect(fetchMock.mock.calls[1]?.[1]?.body).toBe(file);
+    expect(fetchMock.mock.calls[2]?.[0]).toBe("/api/upload/finalize");
     expect(canvasCard("new-1")).not.toBeNull();
 
     // The resourceId flows into the published snapshot for the Image card.
@@ -1747,20 +1767,11 @@ describe("profile content in the Edit popup", () => {
         ],
       }),
     });
-    const fetchMock = vi
-      .fn<
-        (
-          input: string,
-          init?: RequestInit,
-        ) => Promise<{
-          ok: boolean;
-          json: () => Promise<{ url: string }>;
-        }>
-      >()
-      .mockResolvedValue({
-        ok: true,
-        json: async () => ({ url: "https://example.com/new-avatar.png" }),
-      });
+    const fetchMock = directUploadFetchMock({
+      url: "https://example.com/new-avatar.png",
+      mimeType: "image/png",
+      resource: { id: "avatar-resource" },
+    });
     vi.stubGlobal("fetch", fetchMock);
     const user = userEvent.setup();
     renderEditor();
@@ -1800,10 +1811,16 @@ describe("profile content in the Edit popup", () => {
     const file = new File(["avatar"], "avatar.png", { type: "image/png" });
     await user.upload(screen.getByLabelText("Profile picture"), file);
     await screen.findByText("https://example.com/new-avatar.png");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/upload");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/upload/intent");
     expect(fetchMock.mock.calls[0]?.[1]?.method).toBe("POST");
-    expect(fetchMock.mock.calls[0]?.[1]?.body).toBeInstanceOf(FormData);
+    expect(
+      JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string),
+    ).toMatchObject({
+      purpose: "canvas-resource",
+    });
+    expect(fetchMock.mock.calls[1]?.[1]?.body).toBe(file);
+    expect(fetchMock.mock.calls[2]?.[0]).toBe("/api/upload/finalize");
     await user.click(screen.getByRole("button", { name: "Close edit popup" }));
 
     expect(screen.getByText("Canvas Name")).not.toBeNull();
@@ -2442,21 +2459,11 @@ describe("theme and custom background", () => {
       isPending: false,
       data: baseData(),
     });
-    const fetchMock = vi
-      .fn<
-        (
-          input: string,
-          init?: RequestInit,
-        ) => Promise<{ ok: boolean; json: () => Promise<unknown> }>
-      >()
-      .mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          url: "https://example.com/bg.png",
-          mimeType: "image/png",
-          resource: { id: "resource-bg", url: "https://example.com/bg.png" },
-        }),
-      });
+    const fetchMock = directUploadFetchMock({
+      url: "https://example.com/bg.png",
+      mimeType: "image/png",
+      resource: { id: "resource-bg", url: "https://example.com/bg.png" },
+    });
     vi.stubGlobal("fetch", fetchMock);
     const user = userEvent.setup();
     renderEditor();
@@ -2465,10 +2472,15 @@ describe("theme and custom background", () => {
     const file = new File(["bg"], "bg.png", { type: "image/png" });
     await user.upload(screen.getByLabelText("Upload background image"), file);
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/upload");
-    const body = fetchMock.mock.calls[0]?.[1]?.body as FormData;
-    expect(body.get("purpose")).toBe("canvas-resource");
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/upload/intent");
+    expect(
+      JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string),
+    ).toMatchObject({
+      purpose: "canvas-resource",
+    });
+    expect(fetchMock.mock.calls[1]?.[1]?.body).toBe(file);
+    expect(fetchMock.mock.calls[2]?.[0]).toBe("/api/upload/finalize");
     await waitFor(() =>
       expect(surface().style.backgroundImage).toContain(
         "https://example.com/bg.png",

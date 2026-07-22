@@ -457,11 +457,12 @@ describe("grid layout persistence", () => {
     });
     expect(editor).not.toHaveProperty("id");
     expect(editor).not.toHaveProperty("ownerId");
-    expect(fixture.mocks.gridLayout.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ ownerId: "user-1", scope: "PROFILE" }),
-      }),
-    );
+    const findFirstInput =
+      fixture.mocks.gridLayout.findFirst.mock.calls[0]?.[0];
+    expect(findFirstInput?.where).toMatchObject({
+      ownerId: "user-1",
+      scope: "PROFILE",
+    });
   });
 
   it("reports an unavailable profile layout instead of reading another owner's rows", async () => {

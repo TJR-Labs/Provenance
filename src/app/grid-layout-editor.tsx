@@ -87,6 +87,14 @@ function blockName(type: BlockType) {
   return type.charAt(0) + type.slice(1).toLowerCase();
 }
 
+function textOrFallback(
+  value: string | null | undefined,
+  fallback: string,
+): string {
+  if (!value) return fallback;
+  return value;
+}
+
 function newBlock(
   type: BlockType,
   key: string,
@@ -1005,6 +1013,12 @@ export function GridLayoutEditor(
         >
           {history.present.map((block) => {
             const name = blockName(block.type);
+            const projectTitle =
+              block.type === "PROJECT"
+                ? props.initial.projects.find(
+                    (project) => project.id === block.projectId,
+                  )?.title
+                : null;
             return (
               <div
                 key={block.key}
@@ -1027,16 +1041,15 @@ export function GridLayoutEditor(
                 </span>
                 <span className="text-muted mt-2 block truncate text-xs">
                   {block.type === "TEXT"
-                    ? block.textContent || "Empty text shell"
+                    ? textOrFallback(block.textContent, "Empty text shell")
                     : block.type === "PROJECT"
-                      ? props.initial.projects.find(
-                          (project) => project.id === block.projectId,
-                        )?.title || "No project selected"
+                      ? textOrFallback(projectTitle, "No project selected")
                       : block.type === "IMAGE"
-                        ? block.imageUrl || "Empty image shell"
-                        : block.linkLabel ||
-                          block.linkUrl ||
-                          "Empty link shell"}
+                        ? textOrFallback(block.imageUrl, "Empty image shell")
+                        : textOrFallback(
+                            block.linkLabel,
+                            textOrFallback(block.linkUrl, "Empty link shell"),
+                          )}
                 </span>
                 <button
                   type="button"

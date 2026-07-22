@@ -9,6 +9,7 @@ import {
   listPopularHashtags,
   listProjectsByUsername,
 } from "~/server/projects";
+import { publicGridBlockSelect } from "~/server/grid-layouts";
 
 describe("listPopularHashtags", () => {
   it("orders tags by usage frequency, most-used first", async () => {
@@ -183,7 +184,7 @@ describe("getPublicProject", () => {
       "p",
       null,
       projects as never,
-      gridLayouts as never,
+      gridLayouts,
     );
 
     expect(gridLayouts.findFirst).toHaveBeenCalledWith({
@@ -196,10 +197,7 @@ describe("getPublicProject", () => {
       select: {
         blocks: {
           orderBy: [{ order: "asc" }, { key: "asc" }],
-          select: expect.objectContaining({
-            key: true,
-            project: expect.any(Object),
-          }),
+          select: publicGridBlockSelect,
         },
       },
     });
@@ -272,7 +270,7 @@ describe("getPublicProject", () => {
       "p",
       "other",
       projects as never,
-      gridLayouts as never,
+      gridLayouts,
     );
     expect(publicResult).toMatchObject({
       gridLayout: {
@@ -285,7 +283,7 @@ describe("getPublicProject", () => {
       "p",
       "other",
       projects as never,
-      gridLayouts as never,
+      gridLayouts,
     );
     expect(newlyPrivateResult).toMatchObject({
       gridLayout: { blocks: [], projects: [] },
@@ -295,7 +293,7 @@ describe("getPublicProject", () => {
       "p",
       "owner",
       projects as never,
-      gridLayouts as never,
+      gridLayouts,
     );
     expect(ownerPrivateResult).toMatchObject({
       gridLayout: {
@@ -308,7 +306,7 @@ describe("getPublicProject", () => {
       "p",
       "owner",
       projects as never,
-      gridLayouts as never,
+      gridLayouts,
     );
     expect(ownerDeletedResult).toMatchObject({
       gridLayout: {
@@ -321,7 +319,7 @@ describe("getPublicProject", () => {
       "p",
       "other",
       projects as never,
-      gridLayouts as never,
+      gridLayouts,
     );
     expect(viewerDeletedResult).toMatchObject({
       gridLayout: { blocks: [], projects: [] },
@@ -348,7 +346,7 @@ describe("getPublicProject", () => {
       "p",
       null,
       projects as never,
-      gridLayouts as never,
+      gridLayouts,
     );
 
     expect(result).toMatchObject({
@@ -375,7 +373,7 @@ describe("getPublicProject", () => {
       "p",
       null,
       projects as never,
-      gridLayouts as never,
+      gridLayouts,
     );
 
     expect(result).toMatchObject({

@@ -64,27 +64,41 @@ function isHttpUrl(value: string) {
   }
 }
 
-function readProfileLinks(value: unknown) {
-  if (!Array.isArray(value)) return [];
+function isUnknownArray(value: unknown): value is unknown[] {
+  return Array.isArray(value);
+}
+
+function readProfileLinks(
+  value: unknown,
+): Array<{ index: number; label: string; url: string }> {
+  if (!isUnknownArray(value)) return [];
   return value.flatMap((item, index) => {
     if (
       typeof item !== "object" ||
       item === null ||
       !("label" in item) ||
-      !("url" in item) ||
-      typeof item.label !== "string" ||
-      typeof item.url !== "string" ||
-      !item.label.trim() ||
-      !isHttpUrl(item.url)
+      !("url" in item)
     ) {
       return [];
     }
-    return [{ index, label: item.label, url: item.url }];
+    const label = item.label;
+    const url = item.url;
+    if (
+      typeof label !== "string" ||
+      typeof url !== "string" ||
+      !label.trim() ||
+      !isHttpUrl(url)
+    ) {
+      return [];
+    }
+    return [{ index, label, url }];
   });
 }
 
-function readProfileSections(value: unknown) {
-  if (!Array.isArray(value)) return [...PROFILE_SECTIONS];
+function readProfileSections(
+  value: unknown,
+): Array<(typeof PROFILE_SECTIONS)[number]> {
+  if (!isUnknownArray(value)) return [...PROFILE_SECTIONS];
   const seen = new Set<string>();
   return value.filter(
     (item): item is (typeof PROFILE_SECTIONS)[number] =>
@@ -143,7 +157,7 @@ async function migrateProfile(
       layoutSections: true,
     },
   });
-  if (!profile || profile.layoutMode !== "GRID") return "already";
+  if (profile?.layoutMode !== "GRID") return "already";
 
   const projects = await database.project.findMany({
     where: { userId },

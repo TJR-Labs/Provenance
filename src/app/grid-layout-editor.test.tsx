@@ -168,7 +168,7 @@ describe("GridLayoutEditor placement and layout history", () => {
     await user.click(screen.getByRole("button", { name: "Add text block" }));
     const textBlock = screen.getByRole("button", {
       name: /select text block/i,
-    }) as HTMLElement;
+    });
     expect(textBlock.style.gridColumn).toBe("1 / span 2");
     expect(textBlock.style.gridRow).toBe("1 / span 1");
 
@@ -204,7 +204,7 @@ describe("GridLayoutEditor placement and layout history", () => {
 
     const linkBlock = screen.getByRole("button", {
       name: /select link block/i,
-    }) as HTMLElement;
+    });
     expect(linkBlock.style.gridColumn).toBe("5 / span 2");
     expect(linkBlock.style.gridRow).toBe("3 / span 1");
   });
@@ -250,15 +250,13 @@ describe("GridLayoutEditor placement and layout history", () => {
       clientY: 82,
       pointerId: 1,
     });
-    const movePreview = screen.getByTestId(
-      "grid-operation-preview",
-    ) as HTMLElement;
+    const movePreview = screen.getByTestId("grid-operation-preview");
     expect(movePreview.style.gridColumn).toBe("3 / span 2");
     expect(movePreview.style.gridRow).toBe("2 / span 1");
     expect(movePreview.textContent).toMatch(/valid move/i);
     fireEvent.pointerUp(window, { pointerId: 1 });
-    expect((moving as HTMLElement).style.gridColumn).toBe("3 / span 2");
-    expect((moving as HTMLElement).style.gridRow).toBe("2 / span 1");
+    expect(moving.style.gridColumn).toBe("3 / span 2");
+    expect(moving.style.gridRow).toBe("2 / span 1");
 
     const resize = screen.getByRole("button", {
       name: "Resize text block moving",
@@ -273,13 +271,11 @@ describe("GridLayoutEditor placement and layout history", () => {
       clientY: 80,
       pointerId: 2,
     });
-    const resizePreview = screen.getByTestId(
-      "grid-operation-preview",
-    ) as HTMLElement;
+    const resizePreview = screen.getByTestId("grid-operation-preview");
     expect(resizePreview.style.gridColumn).toBe("3 / span 3");
     expect(resizePreview.style.gridRow).toBe("2 / span 2");
     fireEvent.pointerUp(window, { pointerId: 2 });
-    expect((moving as HTMLElement).style.gridColumn).toBe("3 / span 3");
+    expect(moving.style.gridColumn).toBe("3 / span 3");
 
     fireEvent.pointerDown(resize, {
       clientX: 0,
@@ -295,8 +291,8 @@ describe("GridLayoutEditor placement and layout history", () => {
       screen.getByTestId("grid-operation-preview").getAttribute("aria-label"),
     ).toBe("Invalid placement preview");
     fireEvent.pointerUp(window, { pointerId: 3 });
-    expect((moving as HTMLElement).style.gridColumn).toBe("3 / span 3");
-    expect((moving as HTMLElement).style.gridRow).toBe("2 / span 2");
+    expect(moving.style.gridColumn).toBe("3 / span 3");
+    expect(moving.style.gridRow).toBe("2 / span 2");
     expect(screen.getByTestId("placement-status").textContent).toContain(
       "cannot be resized",
     );
@@ -313,17 +309,17 @@ describe("GridLayoutEditor placement and layout history", () => {
     );
     let grid = screen.getByTestId("grid-editor-surface");
     vi.spyOn(grid, "getBoundingClientRect").mockReturnValue(gridRect());
-    let left = screen.getByRole("button", { name: /select text block left/i });
+    const left = screen.getByRole("button", {
+      name: /select text block left/i,
+    });
     fireEvent.pointerDown(left, { clientX: 0, clientY: 0, pointerId: 1 });
     fireEvent.pointerMove(window, { clientX: 400, clientY: 0, pointerId: 1 });
     fireEvent.pointerUp(window, { pointerId: 1 });
-    expect((left as HTMLElement).style.gridColumn).toBe("5 / span 2");
+    expect(left.style.gridColumn).toBe("5 / span 2");
     expect(
-      (
-        screen.getByRole("button", {
-          name: /select text block right/i,
-        }) as HTMLElement
-      ).style.gridColumn,
+      screen.getByRole("button", {
+        name: /select text block right/i,
+      }).style.gridColumn,
     ).toBe("1 / span 2");
 
     view.unmount();
@@ -350,7 +346,7 @@ describe("GridLayoutEditor placement and layout history", () => {
       screen.getByTestId("grid-operation-preview").getAttribute("aria-label"),
     ).toBe("Invalid placement preview");
     fireEvent.pointerUp(window, { pointerId: 3 });
-    expect((wide as HTMLElement).style.gridColumn).toBe("1 / span 3");
+    expect(wide.style.gridColumn).toBe("1 / span 3");
     expect(screen.getByTestId("placement-status").textContent).toContain(
       "Those blocks cannot exchange positions here.",
     );
@@ -376,12 +372,12 @@ describe("GridLayoutEditor placement and layout history", () => {
     expect((textarea as HTMLTextAreaElement).value).toBe("Draft paragraph");
 
     fireEvent.keyDown(text, { key: "ArrowRight" });
-    expect((text as HTMLElement).style.gridColumn).toBe("2 / span 2");
+    expect(text.style.gridColumn).toBe("2 / span 2");
     fireEvent.keyDown(textarea, { key: "ArrowRight", shiftKey: true });
-    expect((text as HTMLElement).style.gridColumn).toBe("2 / span 2");
-    expect((text as HTMLElement).style.gridRow).toBe("1 / span 1");
+    expect(text.style.gridColumn).toBe("2 / span 2");
+    expect(text.style.gridRow).toBe("1 / span 1");
     fireEvent.keyDown(text, { key: "ArrowDown", shiftKey: true });
-    expect((text as HTMLElement).style.gridRow).toBe("1 / span 2");
+    expect(text.style.gridRow).toBe("1 / span 2");
   });
 
   it("deletes immediately, offers a brief Undo, and supports layout undo/redo", async () => {
@@ -413,7 +409,9 @@ describe("GridLayoutEditor placement and layout history", () => {
       screen.getByRole("button", { name: /select link block/i }),
     ).not.toBeNull();
 
-    act(() => vi.advanceTimersByTime(5_000));
+    await act(async () => {
+      vi.advanceTimersByTime(5_000);
+    });
     expect(screen.queryByRole("button", { name: "Undo deletion" })).toBeNull();
   });
 });
@@ -438,11 +436,9 @@ describe("GridLayoutEditor content and preview", () => {
       "Safe <b>text</b>",
     );
     expect(
-      (
-        screen.getByRole("textbox", {
-          name: "Plain text",
-        }) as HTMLTextAreaElement
-      ).value,
+      screen.getByRole<HTMLTextAreaElement>("textbox", {
+        name: "Plain text",
+      }).value,
     ).toBe("Safe <b>text</b>");
 
     await user.click(
@@ -593,7 +589,7 @@ describe("GridLayoutEditor persistence", () => {
       screen.getByRole("button", { name: /select text block saved/i }),
     ).not.toBeNull();
     expect(
-      (screen.getByRole("button", { name: "Publish" }) as HTMLButtonElement)
+      screen.getByRole<HTMLButtonElement>("button", { name: "Publish" })
         .disabled,
     ).toBe(false);
   });
@@ -634,11 +630,11 @@ describe("GridLayoutEditor persistence", () => {
       screen.getByRole("button", { name: /select text block/i }),
     ).not.toBeNull();
     expect(
-      (screen.getByRole("button", { name: "Save Draft" }) as HTMLButtonElement)
+      screen.getByRole<HTMLButtonElement>("button", { name: "Save Draft" })
         .disabled,
     ).toBe(true);
     expect(
-      (screen.getByRole("button", { name: "Publish" }) as HTMLButtonElement)
+      screen.getByRole<HTMLButtonElement>("button", { name: "Publish" })
         .disabled,
     ).toBe(true);
     await user.click(screen.getByRole("button", { name: "Publish" }));
