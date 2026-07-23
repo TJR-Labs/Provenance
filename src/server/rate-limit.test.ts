@@ -113,6 +113,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllEnvs();
 });
 
 describe("consumeRateLimit (count-every-attempt limiter)", () => {
@@ -226,19 +227,25 @@ describe("failure-based lockout helpers (assertNotLockedOut / recordRateLimitFai
 
 describe("resolveClientIp", () => {
   it("uses only the Vercel-appended final address from x-forwarded-for", () => {
+    vi.stubEnv("VERCEL", "1");
     const headers = new Headers({
       "x-forwarded-for": "203.0.113.5, 70.41.3.18, 150.172.238.178",
     });
     expect(resolveClientIp(headers)).toBe("150.172.238.178");
   });
 
-  it("falls back to x-real-ip when x-forwarded-for is absent", () => {
-    const headers = new Headers({ "x-real-ip": "203.0.113.9" });
+  it("ignores x-forwarded-for outside Vercel and falls back to x-real-ip", () => {
+    vi.stubEnv("VERCEL", "0");
+    const headers = new Headers({
+      "x-forwarded-for": "203.0.113.5",
+      "x-real-ip": "203.0.113.9",
+    });
     expect(resolveClientIp(headers)).toBe("203.0.113.9");
   });
 
-  it("degrades to a shared bucket instead of throwing when no IP header is present", () => {
-    const headers = new Headers();
+  it("ignores x-forwarded-for when Vercel is unset and uses the shared bucket", () => {
+    vi.stubEnv("VERCEL", undefined);
+    const headers = new Headers({ "x-forwarded-for": "203.0.113.5" });
     expect(resolveClientIp(headers)).toBe("unknown");
   });
 });

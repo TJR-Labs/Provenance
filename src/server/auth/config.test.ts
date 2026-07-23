@@ -101,6 +101,7 @@ async function authorize(
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-07-15T12:00:00.000Z"));
+  vi.stubEnv("VERCEL", "1");
   vi.clearAllMocks();
   mocks.attempts.clear();
   mocks.ipAttempts.clear();
@@ -208,6 +209,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllEnvs();
 });
 
 describe("credentials login rate limiting", () => {

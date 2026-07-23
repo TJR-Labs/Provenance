@@ -38,6 +38,24 @@ type ProjectPagination = {
   limit?: number;
 };
 
+export function canViewProject(
+  project: { userId: string; private: boolean },
+  viewerId: string | null,
+): boolean;
+export function canViewProject(
+  project: { private: boolean },
+  isOwner: boolean,
+): boolean;
+export function canViewProject(
+  project: { userId: string; private: boolean } | { private: boolean },
+  viewerId: string | null | boolean,
+): boolean {
+  if (typeof viewerId === "boolean") return viewerId || !project.private;
+  return (
+    ("userId" in project && project.userId === viewerId) || !project.private
+  );
+}
+
 const projectListSelect = {
   id: true,
   title: true,
@@ -415,8 +433,11 @@ export async function getPublicProject(
   });
   if (!project) return null;
   if (
-    (project.private || project.user.private) &&
-    project.userId !== viewerId
+    !canViewProject(project, viewerId) ||
+    !canViewProject(
+      { userId: project.userId, private: project.user.private },
+      viewerId,
+    )
   ) {
     return null;
   }

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("~/server/auth", () => ({ auth: vi.fn() }));
 vi.mock("~/server/auth/password", () => ({
@@ -146,6 +146,14 @@ function signupInput(username: string) {
 }
 
 describe("users.signup rate limiting", () => {
+  beforeEach(() => {
+    vi.stubEnv("VERCEL", "1");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("allows signups under the per-IP threshold", async () => {
     const rateLimits = fakeRateLimits();
     const caller = callerFromIp("203.0.113.10", rateLimits);

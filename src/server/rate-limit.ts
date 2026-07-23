@@ -194,20 +194,21 @@ export async function resetRateLimit(
 }
 
 /**
- * Resolves the caller's IP address from standard proxy headers
- * (`x-forwarded-for`, falling back to `x-real-ip`). If neither header is
- * present or parseable — e.g. a direct connection in local dev with no
- * proxy in front of it — degrades safely to a single shared "unknown"
- * bucket rather than throwing, so signup never breaks because of a missing
- * header.
+ * Resolves the caller's IP address from trusted proxy headers. On Vercel,
+ * uses the final `x-forwarded-for` entry; elsewhere that header is ignored.
+ * Falls back to `x-real-ip`, then to a single shared "unknown" bucket rather
+ * than throwing, so signup never breaks because of a missing header.
  */
 export function resolveClientIp(headers: Headers): string {
-  const forwardedFor = headers.get("x-forwarded-for");
-  if (forwardedFor) {
-    // Vercel appends its trusted client address at the proxy boundary. Earlier
-    // entries may be client-supplied, so only the final value is authoritative.
-    const last = forwardedFor.split(",").at(-1)?.trim();
-    if (last) return last;
+  if (process.env.VERCEL === "1") {
+    const forwardedFor = headers.get("x-forwarded-for");
+    if (forwardedFor) {
+      // Vercel appends its trusted client address at the proxy boundary.
+      // Earlier entries may be client-supplied, so only the final value is
+      // authoritative.
+      const last = forwardedFor.split(",").at(-1)?.trim();
+      if (last) return last;
+    }
   }
 
   const realIp = headers.get("x-real-ip")?.trim();

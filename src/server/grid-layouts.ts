@@ -14,6 +14,7 @@ import {
   ensureProfileGridLayouts,
   ensureProjectGridLayout,
 } from "~/server/grid-layout-migration";
+import { canViewProject } from "~/server/projects";
 
 export type GridProjectOption = {
   id: string;
@@ -82,8 +83,9 @@ export function serializePublicGridLayout(
   const visibleRows = layout.blocks.filter(
     (block) =>
       block.type !== "PROJECT" ||
-      isOwner ||
-      (block.project !== null && !block.project.private),
+      (block.project === null
+        ? isOwner
+        : canViewProject(block.project, isOwner)),
   );
   const referencedProjectIds = new Set(
     visibleRows.flatMap((block) =>
@@ -103,7 +105,7 @@ export function serializePublicGridLayout(
     ) {
       continue;
     }
-    if (!isOwner && project.private) continue;
+    if (!canViewProject(project, isOwner)) continue;
     seenProjectIds.add(project.id);
     publicProjects.push({
       id: project.id,

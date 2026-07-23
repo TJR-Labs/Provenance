@@ -15,6 +15,13 @@ import {
   publishProjectGrid,
   saveProfileGridDraft,
 } from "~/server/grid-layouts";
+import { consumeRateLimit } from "~/server/rate-limit";
+
+const SAVE_PROFILE_DRAFT_RATE_LIMIT_SCOPE = "grid.saveProfileDraft";
+const PUBLISH_PROFILE_RATE_LIMIT_SCOPE = "grid.publishProfile";
+const PUBLISH_PROJECT_RATE_LIMIT_SCOPE = "grid.publishProject";
+const GRID_MUTATION_RATE_LIMIT_THRESHOLD = 60;
+const GRID_MUTATION_RATE_LIMIT_WINDOW_MS = 60_000;
 
 function gridError(error: unknown): never {
   if (error instanceof GridLayoutOwnershipError) {
@@ -58,6 +65,16 @@ export const gridRouter = createTRPCRouter({
   saveProfileDraft: protectedProcedure
     .input(gridSaveInputSchema)
     .mutation(async ({ ctx, input }) => {
+      await consumeRateLimit(
+        {
+          scope: SAVE_PROFILE_DRAFT_RATE_LIMIT_SCOPE,
+          key: ctx.session.user.id,
+          limit: GRID_MUTATION_RATE_LIMIT_THRESHOLD,
+          windowMs: GRID_MUTATION_RATE_LIMIT_WINDOW_MS,
+          lockoutMs: GRID_MUTATION_RATE_LIMIT_WINDOW_MS,
+        },
+        ctx.db.rateLimitAttempt,
+      );
       try {
         return await saveProfileGridDraft(ctx.session.user.id, input, ctx.db);
       } catch (error) {
@@ -68,6 +85,16 @@ export const gridRouter = createTRPCRouter({
   publishProfile: protectedProcedure
     .input(gridSaveInputSchema)
     .mutation(async ({ ctx, input }) => {
+      await consumeRateLimit(
+        {
+          scope: PUBLISH_PROFILE_RATE_LIMIT_SCOPE,
+          key: ctx.session.user.id,
+          limit: GRID_MUTATION_RATE_LIMIT_THRESHOLD,
+          windowMs: GRID_MUTATION_RATE_LIMIT_WINDOW_MS,
+          lockoutMs: GRID_MUTATION_RATE_LIMIT_WINDOW_MS,
+        },
+        ctx.db.rateLimitAttempt,
+      );
       try {
         return await publishProfileGrid(ctx.session.user.id, input, ctx.db);
       } catch (error) {
@@ -78,6 +105,16 @@ export const gridRouter = createTRPCRouter({
   publishProject: protectedProcedure
     .input(gridProjectSaveInputSchema)
     .mutation(async ({ ctx, input }) => {
+      await consumeRateLimit(
+        {
+          scope: PUBLISH_PROJECT_RATE_LIMIT_SCOPE,
+          key: ctx.session.user.id,
+          limit: GRID_MUTATION_RATE_LIMIT_THRESHOLD,
+          windowMs: GRID_MUTATION_RATE_LIMIT_WINDOW_MS,
+          lockoutMs: GRID_MUTATION_RATE_LIMIT_WINDOW_MS,
+        },
+        ctx.db.rateLimitAttempt,
+      );
       try {
         return await publishProjectGrid(
           input.projectId,

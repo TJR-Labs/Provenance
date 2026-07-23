@@ -5,6 +5,7 @@ import {
   publicGridBlockSelect,
   serializePublicGridLayout,
 } from "~/server/grid-layouts";
+import { canViewProject } from "~/server/projects";
 
 type UserReader = Pick<PrismaClient["user"], "findFirst">;
 type ProjectReader = Pick<PrismaClient["project"], "findMany">;
@@ -48,7 +49,11 @@ export async function getPublicProfile(
   });
   if (!profile) return null;
   const isOwner = viewerId != null && profile.id === viewerId;
-  if (profile.private && !isOwner) return { isPrivate: true as const };
+  if (
+    !canViewProject({ userId: profile.id, private: profile.private }, viewerId)
+  ) {
+    return { isPrivate: true as const };
+  }
 
   const [categories, publishedCanvasElements, publishedGridLayout] =
     await Promise.all([
@@ -87,12 +92,12 @@ export async function getPublicProfile(
           })
         : Promise.resolve(null),
     ]);
-  const visibleCanvasElements = isOwner
-    ? publishedCanvasElements
-    : publishedCanvasElements.filter(
-        (element) =>
-          element.type !== "PROJECT" || element.project?.private !== true,
-      );
+  const visibleCanvasElements = publishedCanvasElements.filter(
+    (element) =>
+      element.type !== "PROJECT" ||
+      element.project === null ||
+      canViewProject(element.project, isOwner),
+  );
 
   return {
     ...profile,
