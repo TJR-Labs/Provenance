@@ -2,17 +2,22 @@ import { pathToFileURL } from "node:url";
 
 import { loadEnvConfig } from "@next/env";
 
+// Manual/operator invocations are not time-boxed like the cron route, so no
+// batch cap is applied here.
+const CLI_BATCH_SIZE = Number.MAX_SAFE_INTEGER;
+
 async function main() {
   loadEnvConfig(process.cwd());
-  const [{ db }, { cleanupUploadStaging }] = await Promise.all([
+  const [{ db }, { runUploadCleanup }] = await Promise.all([
     import("../src/server/db"),
-    import("../src/server/upload-staging-cleanup"),
+    import("../src/server/jobs/upload-cleanup"),
   ]);
 
   try {
-    const result = await cleanupUploadStaging();
-    console.log(JSON.stringify(result, null, 2));
-    if (result.failed > 0) process.exitCode = 1;
+    const { selected, deleted, expired, failed } =
+      await runUploadCleanup(CLI_BATCH_SIZE);
+    console.log(JSON.stringify({ selected, deleted, expired, failed }, null, 2));
+    if (failed > 0) process.exitCode = 1;
   } finally {
     await db.$disconnect();
   }

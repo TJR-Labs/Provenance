@@ -2,19 +2,26 @@ import { pathToFileURL } from "node:url";
 
 import { loadEnvConfig } from "@next/env";
 
+// Manual/operator invocations are not time-boxed like the cron route, so no
+// batch cap is applied here.
+const CLI_BATCH_SIZE = Number.MAX_SAFE_INTEGER;
+
 async function main() {
   loadEnvConfig(process.cwd());
-  const [{ db }, { reconcileStorage }] = await Promise.all([
+  const [{ db }, { runStorageReconciliation }] = await Promise.all([
     import("../src/server/db"),
-    import("../src/server/storage-reconciliation"),
+    import("../src/server/jobs/storage-reconciliation-job"),
   ]);
 
   try {
-    const result = await reconcileStorage();
-    console.log(JSON.stringify(result, null, 2));
+    const { pendingDeletions, abandonedStaging } =
+      await runStorageReconciliation(CLI_BATCH_SIZE);
+    console.log(
+      JSON.stringify({ pendingDeletions, abandonedStaging }, null, 2),
+    );
     if (
-      result.pendingDeletions.failed > 0 ||
-      result.abandonedStaging.failed > 0
+      pendingDeletions.failed > 0 ||
+      abandonedStaging.failed > 0
     ) {
       process.exitCode = 1;
     }

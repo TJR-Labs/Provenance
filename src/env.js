@@ -86,6 +86,7 @@ export function createAppEnv(source = process.env) {
     SUPABASE_STORAGE_STAGING_BUCKET: source.SUPABASE_STORAGE_STAGING_BUCKET,
     RESEND_API_KEY: source.RESEND_API_KEY,
     EMAIL_FROM: source.EMAIL_FROM,
+    CRON_SECRET: source.CRON_SECRET,
     NODE_ENV: source.NODE_ENV,
   };
   const skipValidation = !!source.SKIP_ENV_VALIDATION;
@@ -130,6 +131,12 @@ export function createAppEnv(source = process.env) {
       // delivery no-ops when either value is unset (src/server/email.ts).
       RESEND_API_KEY: z.string().min(1).optional(),
       EMAIL_FROM: z.string().min(1).optional(),
+      // Required in production so Vercel Cron requests can be authenticated
+      // (Authorization: Bearer <CRON_SECRET>); optional elsewhere since local/
+      // preview runs never receive real cron traffic.
+      CRON_SECRET: isProduction
+        ? z.string().min(1)
+        : z.string().min(1).optional(),
       NODE_ENV: z
         .enum(["development", "test", "production"])
         .default("development"),

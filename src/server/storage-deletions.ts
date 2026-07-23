@@ -13,6 +13,8 @@ type ReconciliationDependencies = {
   getStorageClient?: StorageClientFactory;
   only?: StorageObjectKey[];
   now?: () => Date;
+  /** Caps how many pending deletions are reconciled in this call. Unbounded when omitted. */
+  take?: number;
 };
 
 function uniqueObjects(objects: StorageObjectKey[]) {
@@ -173,6 +175,7 @@ export async function reconcilePendingStorageDeletions(
       : undefined,
     select: { bucket: true, path: true },
     orderBy: { createdAt: "asc" },
+    ...(dependencies.take !== undefined ? { take: dependencies.take } : {}),
   });
 
   const result = {
@@ -192,6 +195,13 @@ export async function reconcilePendingStorageDeletions(
     result[outcome] += 1;
   }
   return result;
+}
+
+export async function countPendingStorageDeletions(
+  dependencies: Pick<ReconciliationDependencies, "prisma"> = {},
+) {
+  const prisma = dependencies.prisma ?? db;
+  return prisma.pendingStorageDeletion.count();
 }
 
 export async function queueAndDeleteStorageObjectBestEffort(

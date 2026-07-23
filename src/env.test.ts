@@ -20,6 +20,7 @@ function completeProductionEnv(): NodeJS.ProcessEnv {
     SUPABASE_STORAGE_STAGING_BUCKET: "upload-staging",
     RESEND_API_KEY: "fabricated-resend-api-key",
     EMAIL_FROM: "accounts@example.test",
+    CRON_SECRET: "fabricated-cron-secret",
     NODE_ENV: "production",
   };
 }
@@ -72,6 +73,15 @@ describe("production environment validation", () => {
         [variableName]: undefined,
       }),
     ).toThrow(variableName);
+  });
+
+  it("rejects a production configuration without CRON_SECRET", () => {
+    expect(() =>
+      createAppEnv({
+        ...completeProductionEnv(),
+        CRON_SECRET: undefined,
+      }),
+    ).toThrow(/CRON_SECRET/);
   });
 
   it("accepts production without RESEND_API_KEY or EMAIL_FROM", () => {

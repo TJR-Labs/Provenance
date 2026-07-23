@@ -14,6 +14,8 @@ type StorageReconciliationDependencies = {
   prisma?: PrismaClient;
   getStorageClient?: StorageClientFactory;
   now?: () => Date;
+  /** Caps how many rows each sub-step reconciles in this call. Unbounded when omitted. */
+  take?: number;
 };
 
 export async function reconcileStorage(
@@ -24,11 +26,13 @@ export async function reconcileStorage(
     prisma,
     getStorageClient: dependencies.getStorageClient,
     now: dependencies.now,
+    take: dependencies.take,
   });
   const abandonedStaging = await cleanupUploadStaging({
     prisma,
     getStorageClient: dependencies.getStorageClient,
     now: dependencies.now,
+    take: dependencies.take,
   });
   return { pendingDeletions, abandonedStaging };
 }

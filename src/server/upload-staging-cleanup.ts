@@ -8,6 +8,8 @@ type CleanupDependencies = {
   prisma?: typeof db;
   getStorageClient?: StorageClientFactory;
   now?: () => Date;
+  /** Caps how many abandoned intents are cleaned up in this call. Unbounded when omitted. */
+  take?: number;
 };
 
 function abandonedStagingWhere(now: Date) {
@@ -45,6 +47,8 @@ export async function cleanupUploadStaging(
       stagingBucket: true,
       stagingPath: true,
     },
+    orderBy: { createdAt: "asc" },
+    ...(dependencies.take !== undefined ? { take: dependencies.take } : {}),
   });
 
   let deleted = 0;

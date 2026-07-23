@@ -1,5 +1,21 @@
 # Deployment and incident runbook
 
+## Scheduled maintenance jobs
+
+`cleanup:rate-limits`, `cleanup:uploads`, and `storage:reconcile` now run **automatically in production** via Vercel Cron (`vercel.json`), in addition to remaining runnable manually with `npm run <script>`. Each cron route lives under `src/app/api/cron/` and shares its core logic with the CLI script through `src/server/jobs/`:
+
+| Cron route | Schedule (UTC) | Shared job function | Batch size (`LIMIT`) and why it fits the 10s timeout |
+| --- | --- | --- | --- |
+| `/api/cron/cleanup-rate-limits` | `0 3 * * *` | `runRateLimitCleanup` (`src/server/jobs/rate-limit-cleanup.ts`) | 500 oldest-eligible rows per table (7 tables) — each delete targets an indexed column, sub-second even at the cap. |
+| `/api/cron/cleanup-uploads` | `20 3 * * *` | `runUploadCleanup` (`src/server/jobs/upload-cleanup.ts`) | 25 rows — each row costs one sequential Supabase Storage network call plus a DB update (~300ms budgeted per row). |
+| `/api/cron/storage-reconcile` | `40 3 * * *` | `runStorageReconciliation` (`src/server/jobs/storage-reconciliation-job.ts`) | 10 rows per sub-step (pending-deletion reconciliation, then abandoned-staging cleanup) — each row is a DB transaction plus a Storage call. |
+
+Schedules are staggered by at least 15 minutes so they don't compete for database connections in the same window. Each run is bounded to a single batch (`LIMIT`) per invocation, oldest rows first; if a day's backlog exceeds one batch, the next day's run continues from the oldest remaining rows — there is no cursor or intra-day retry.
+
+Vercel signs cron requests with `Authorization: Bearer ${CRON_SECRET}`; every cron route rejects any other request with `401` before running cleanup logic. Set `CRON_SECRET` in the Production environment (required — the app fails to build without it in production).
+
+**Checking logs:** each run logs one JSON line (`event: "cron_job_completed"`) with the route, `processed` count, and `remaining` backlog count via `console.log`, alongside any `server_error` line from `logServerError` on failure. View these in the Vercel deployment's Runtime Logs (or the log drain configured below) filtered by route. A `remaining` count that keeps growing day over day — visible directly in these logs — is the signal that the batch size or schedule needs revisiting; there is no separate alerting on backlog size yet (explicitly deferred).
+
 ## Health monitoring and alert ownership
 
 The application exposes two stable, unauthenticated health endpoints:
@@ -31,7 +47,7 @@ Console collection alone is not an alert. Configure a Vercel log drain, or an eq
 - five `upload` events in ten minutes; and
 - five `unknown` events in five minutes, because these are unexpected API failures.
 
-The external scheduler or CI system must also alert `<on-call owner>` on any failed production migration, backup/export failure or missed backup, or two consecutive failures of `npm run storage:reconcile`, `npm run cleanup:uploads`, or `npm run cleanup:rate-limits`. Capture each command's exit status and aggregate output; do not place environment values or secret-bearing provider errors in alert messages. `npm run storage:report` provides the secret-free Storage totals and failure counts needed during triage.
+The external scheduler or CI system must also alert `<on-call owner>` on any failed production migration or backup/export failure or missed backup, and on any non-200 response or `server_error` log line from `/api/cron/cleanup-rate-limits`, `/api/cron/cleanup-uploads`, or `/api/cron/storage-reconcile` (two consecutive failures of the same cron route). Capture each run's status and the `processed`/`remaining` counts from its `cron_job_completed` log line; do not place environment values or secret-bearing provider errors in alert messages. `npm run storage:report` provides the secret-free Storage totals and failure counts needed during triage, and each job also remains runnable manually via `npm run storage:reconcile`, `npm run cleanup:uploads`, or `npm run cleanup:rate-limits`.
 
 Test the log integration in Preview by generating a controlled server error, locating its correlation id in `<log alerting destination>`, and confirming the threshold/test notification reaches `<incident notification channel>`. Test scheduler alerts with the scheduler's built-in test-failure facility rather than damaging data or disabling a Production dependency. Record the test date, result, monitor configuration, log-drain destination, and dashboard links in the private operations system; do not commit private contacts or credentials here.
 
