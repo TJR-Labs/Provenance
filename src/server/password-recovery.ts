@@ -374,17 +374,16 @@ export async function adminForcePasswordReset(
       );
       emailSent = true;
     } catch {
-      // Support can still relay the token out-of-band via the logged line
-      // below when the provider is down.
+      // Fall through: the token is returned below for the calling admin to
+      // relay out-of-band. Never log a raw reset token.
     }
   }
   if (!emailSent) {
     console.info("Admin-issued password reset token for out-of-band relay.", {
       userId: user.id,
-      token,
     });
   }
-  return { emailSent };
+  return { emailSent, token: emailSent ? null : token };
 }
 
 export async function confirmEmailVerification(
