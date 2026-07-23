@@ -7,6 +7,7 @@ import {
   UploadIntentError,
   UPLOAD_PURPOSES,
 } from "~/server/upload-intents";
+import { logServerError } from "~/server/observability";
 
 const requestSchema = z.object({
   purpose: z.enum(UPLOAD_PURPOSES),
@@ -44,7 +45,12 @@ export async function POST(request: Request) {
         { status: error.status },
       );
     }
-    console.error("Upload intent creation failed", error);
+    logServerError({
+      request,
+      route: "/api/upload/intent",
+      category: "upload",
+      error,
+    });
     return NextResponse.json(
       { error: "Unable to prepare the upload." },
       { status: 500 },

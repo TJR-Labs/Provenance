@@ -3,7 +3,8 @@ import Link from "next/link";
 import { getServerCaller } from "~/server/api/caller";
 
 export default async function MyWorkPage() {
-  const projects = await (await getServerCaller()).project.listMine();
+  const projectPage = await (await getServerCaller()).project.listMine();
+  const projects = projectPage.items;
 
   return (
     <section className="mx-auto w-full max-w-3xl px-6 py-14">

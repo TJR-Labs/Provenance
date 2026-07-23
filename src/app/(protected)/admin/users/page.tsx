@@ -10,7 +10,8 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", { dateStyle: "medium" });
 export default async function UsersPage() {
   const session = await auth();
   if (session?.user.role !== Role.ADMIN) forbidden();
-  const users = await (await getServerCaller()).users.list();
+  const userPage = await (await getServerCaller()).users.list();
+  const users = userPage.items;
 
   return (
     <section className="mx-auto w-full max-w-6xl px-6 py-14">

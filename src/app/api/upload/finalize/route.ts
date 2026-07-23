@@ -6,6 +6,7 @@ import {
   finalizeUploadIntent,
   UploadIntentError,
 } from "~/server/upload-intents";
+import { logServerError } from "~/server/observability";
 import { UploadValidationError } from "~/server/upload-validation";
 
 const requestSchema = z.object({ intentId: z.string().min(1) });
@@ -46,7 +47,12 @@ export async function POST(request: Request) {
         { status: error.status },
       );
     }
-    console.error("Upload finalization failed", error);
+    logServerError({
+      request,
+      route: "/api/upload/finalize",
+      category: "upload",
+      error,
+    });
     return NextResponse.json(
       { error: "Unable to finalize the upload." },
       { status: 500 },

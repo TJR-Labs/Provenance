@@ -28,10 +28,10 @@ export default async function CanvasEditorPage() {
   const profile = await caller.profile.me();
   const isCanvas = profile.layoutMode === "CANVAS";
 
-  const [projects, gridLayout] = await Promise.all([
+  const [projectPage, gridLayout] = await Promise.all([
     isCanvas
       ? caller.project.listByUsername({ username: profile.username })
-      : Promise.resolve([]),
+      : Promise.resolve({ items: [], nextCursor: null }),
     isCanvas
       ? Promise.resolve(null)
       : caller.grid.profileEditorState().catch((error: unknown) => {
@@ -41,6 +41,7 @@ export default async function CanvasEditorPage() {
           throw error;
         }),
   ]);
+  const projects = projectPage.items;
 
   // Category badge labels are derived per-project, matching the fixed header /
   // getPublicProfile — the Categories element is read-only and follows this.

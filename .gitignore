@@ -13,6 +13,13 @@
 /prisma/db.sqlite
 /prisma/db.sqlite-journal
 db.sqlite
+*.sql
+*.sql.gz
+*.dump
+*.dump.gz
+*.backup
+*.bak
+!prisma/migrations/**/migration.sql
 
 # next.js
 /.next/
@@ -25,6 +32,11 @@ next-env.d.ts
 # misc
 .DS_Store
 *.pem
+*.key
+*service-role*.json
+*service_role*.json
+*backup-credentials*
+*backup_credentials*
 
 # debug
 npm-debug.log*
@@ -35,7 +47,11 @@ yarn-error.log*
 # local env files
 # do not commit any .env files to git, except for the .env.example file. https://create.t3.gg/en/usage/env-variables#using-environment-variables
 .env
-.env*.local
+.env.*
+*.env
+*.env.*
+!.env.example
+!*.env.example
 
 # vercel
 .vercel

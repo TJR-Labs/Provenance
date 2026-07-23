@@ -40,7 +40,9 @@ function collectLinks(node: unknown): { href: string; pressed: unknown }[] {
   return found;
 }
 
-async function renderHome(params: { category?: string; hashtag?: string } = {}) {
+async function renderHome(
+  params: { category?: string; hashtag?: string } = {},
+) {
   return (await Home({
     searchParams: Promise.resolve(params),
   })) as ReactElement;
@@ -48,7 +50,7 @@ async function renderHome(params: { category?: string; hashtag?: string } = {}) 
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.list.mockResolvedValue([]);
+  mocks.list.mockResolvedValue({ items: [], nextCursor: null });
 });
 
 describe("the Discover hashtag chips", () => {
@@ -81,12 +83,12 @@ describe("the Discover hashtag chips", () => {
 
     const chips = collectLinks(await renderHome({ hashtag: "robotics" }));
 
-    expect(chips.find((chip) => chip.href.endsWith("hashtag=robotics"))?.pressed).toBe(
-      true,
-    );
-    expect(chips.find((chip) => chip.href.endsWith("hashtag=ai"))?.pressed).toBe(
-      false,
-    );
+    expect(
+      chips.find((chip) => chip.href.endsWith("hashtag=robotics"))?.pressed,
+    ).toBe(true);
+    expect(
+      chips.find((chip) => chip.href.endsWith("hashtag=ai"))?.pressed,
+    ).toBe(false);
   });
 
   it("renders no chips when no hashtags are in use", async () => {

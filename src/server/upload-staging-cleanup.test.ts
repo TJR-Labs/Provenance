@@ -20,6 +20,7 @@ describe("cleanupUploadStaging", () => {
         expiresAt: new Date(now.getTime() - 1),
         stagingBucket: "staging",
         stagingPath: "user-1/expired",
+        stagingDeletedAt: null as Date | null,
       },
       {
         id: "failed",
@@ -27,6 +28,7 @@ describe("cleanupUploadStaging", () => {
         expiresAt: new Date(now.getTime() + 60_000),
         stagingBucket: "staging",
         stagingPath: "user-1/failed",
+        stagingDeletedAt: null as Date | null,
       },
       {
         id: "pending",
@@ -34,6 +36,7 @@ describe("cleanupUploadStaging", () => {
         expiresAt: new Date(now.getTime() + 60_000),
         stagingBucket: "staging",
         stagingPath: "user-1/pending",
+        stagingDeletedAt: null as Date | null,
       },
       {
         id: "finalized",
@@ -41,13 +44,17 @@ describe("cleanupUploadStaging", () => {
         expiresAt: new Date(now.getTime() - 60_000),
         stagingBucket: "staging",
         stagingPath: "user-1/finalized",
+        stagingDeletedAt: null as Date | null,
       },
     ];
     const eligible = () =>
       rows.filter(
         (row) =>
-          row.status === "FAILED" ||
-          (row.status === "PENDING" && row.expiresAt < now),
+          row.stagingDeletedAt === null &&
+          (row.status === "FAILED" ||
+            row.status === "EXPIRED" ||
+            ((row.status === "PENDING" || row.status === "FINALIZED") &&
+              row.expiresAt < now)),
       );
     const prisma = {
       uploadIntent: {
@@ -55,7 +62,8 @@ describe("cleanupUploadStaging", () => {
         updateMany: vi.fn(async ({ where }: { where: { id: string } }) => {
           const row = eligible().find((candidate) => candidate.id === where.id);
           if (!row) return { count: 0 };
-          row.status = "EXPIRED";
+          if (row.status !== "FINALIZED") row.status = "EXPIRED";
+          row.stagingDeletedAt = now;
           return { count: 1 };
         }),
       },
@@ -70,8 +78,8 @@ describe("cleanupUploadStaging", () => {
     };
 
     await expect(cleanupUploadStaging(dependencies)).resolves.toEqual({
-      selected: 2,
-      deleted: 2,
+      selected: 3,
+      deleted: 3,
       expired: 2,
       failed: 0,
     });
@@ -82,8 +90,8 @@ describe("cleanupUploadStaging", () => {
       failed: 0,
     });
 
-    expect(remove).toHaveBeenCalledTimes(2);
+    expect(remove).toHaveBeenCalledTimes(3);
     expect(remove).not.toHaveBeenCalledWith(["user-1/pending"]);
-    expect(remove).not.toHaveBeenCalledWith(["user-1/finalized"]);
+    expect(remove).toHaveBeenCalledWith(["user-1/finalized"]);
   });
 });

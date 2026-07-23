@@ -1,11 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("~/server/db", () => ({ db: {} }));
+
 import {
   assertNotLockedOut,
   consumeRateLimit,
+  RATE_LIMIT_ATOMIC_UPDATE,
   recordRateLimitFailure,
   resetRateLimit,
   resolveClientIp,
+  type RateLimitConfig,
   type RateLimitDelegate,
 } from "~/server/rate-limit";
 
@@ -25,12 +29,55 @@ function fakeRateLimits(): RateLimitDelegate & {
 
   return {
     rows,
+    [RATE_LIMIT_ATOMIC_UPDATE]: vi.fn(
+      async (
+        config: Omit<RateLimitConfig, "message">,
+        mode: "consume" | "failure",
+      ) => {
+        const now = new Date();
+        const k = rowKey(config.scope, config.key);
+        const existing = rows.get(k);
+        const activelyLocked =
+          (existing?.lockedUntil?.getTime() ?? 0) > now.getTime();
+        const startsNewWindow =
+          !existing ||
+          (mode === "failure" && existing.lockedUntil !== null) ||
+          now.getTime() - existing.windowStart.getTime() >= config.windowMs;
+        const count = activelyLocked
+          ? existing!.count
+          : startsNewWindow
+            ? 1
+            : existing.count + 1;
+        const windowStart =
+          activelyLocked || !startsNewWindow
+            ? (existing?.windowStart ?? now)
+            : now;
+        const lockedUntil = activelyLocked
+          ? existing!.lockedUntil
+          : count >= config.limit
+            ? new Date(now.getTime() + config.lockoutMs)
+            : null;
+        rows.set(k, {
+          scope: config.scope,
+          key: config.key,
+          count,
+          windowStart,
+          lockedUntil,
+        });
+        return {
+          allowed: lockedUntil === null && count < config.limit,
+          count,
+          lockedUntil,
+        };
+      },
+    ),
     findUnique: vi.fn(
       async ({
         where,
       }: {
         where: { scope_key: { scope: string; key: string } };
-      }) => rows.get(rowKey(where.scope_key.scope, where.scope_key.key)) ?? null,
+      }) =>
+        rows.get(rowKey(where.scope_key.scope, where.scope_key.key)) ?? null,
     ) as never,
     upsert: vi.fn(
       async ({
@@ -116,9 +163,7 @@ describe("consumeRateLimit (count-every-attempt limiter)", () => {
       new Date(Date.now() + config.windowMs + config.lockoutMs + 1000),
     );
 
-    await expect(
-      consumeRateLimit(config, rateLimits),
-    ).resolves.toBeUndefined();
+    await expect(consumeRateLimit(config, rateLimits)).resolves.toBeUndefined();
   });
 
   it("tracks separate identifiers (e.g. IPs) independently", async () => {
@@ -180,11 +225,11 @@ describe("failure-based lockout helpers (assertNotLockedOut / recordRateLimitFai
 });
 
 describe("resolveClientIp", () => {
-  it("reads the first address from x-forwarded-for", () => {
+  it("uses only the Vercel-appended final address from x-forwarded-for", () => {
     const headers = new Headers({
       "x-forwarded-for": "203.0.113.5, 70.41.3.18, 150.172.238.178",
     });
-    expect(resolveClientIp(headers)).toBe("203.0.113.5");
+    expect(resolveClientIp(headers)).toBe("150.172.238.178");
   });
 
   it("falls back to x-real-ip when x-forwarded-for is absent", () => {

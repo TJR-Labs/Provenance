@@ -13,6 +13,8 @@ vi.mock("~/env", () => ({
 import {
   createUploadIntent,
   finalizeUploadIntent,
+  MAX_FINALIZED_OWNED_MEDIA_BYTES,
+  MAX_UPLOAD_INTENTS_PER_USER_PER_HOUR,
 } from "~/server/upload-intents";
 import {
   MAX_IMAGE_BYTES,
@@ -41,24 +43,32 @@ function intent(overrides: Record<string, unknown> = {}) {
     resultUrl: null as string | null,
     resultMimeType: null as string | null,
     resultResourceId: null as string | null,
+    resultStorageBucket: null as string | null,
+    resultStoragePath: null as string | null,
+    resultByteSize: null as number | null,
+    storageDeletedAt: null as Date | null,
+    stagingDeletedAt: null as Date | null,
     createdAt: NOW,
     finalizedAt: null as Date | null,
     ...overrides,
   };
 }
 
-function fakePrisma(initial = intent()) {
+function fakePrisma(initial = intent(), ownedBytes = 0) {
   let row = initial;
-  const imageResourceCreate = vi.fn(async () => ({
-    id: "resource-1",
-    url: "https://cdn.example.test/user-1/public-id.png",
-    mimeType: "image/png",
-    createdAt: NOW,
-  }));
+  let pendingDeletion: { bucket: string; path: string; reason: string } | null =
+    null;
+  const imageResourceCreate = vi.fn(
+    async (_args: { data: Record<string, unknown> }) => ({
+      id: "resource-1",
+      url: "https://cdn.example.test/user-1/public-id.png",
+      mimeType: "image/png",
+      createdAt: NOW,
+    }),
+  );
   const uploadIntent = {
     findUnique: vi.fn(async () => row),
-    updateMany: vi.fn(async ({ data }: { data: { status: IntentStatus } }) => {
-      if (row.status !== "PENDING") return { count: 0 };
+    updateMany: vi.fn(async ({ data }: { data: Partial<typeof row> }) => {
       row = { ...row, ...data };
       return { count: 1 };
     }),
@@ -66,15 +76,44 @@ function fakePrisma(initial = intent()) {
       row = { ...row, ...data };
       return row;
     }),
+    count: vi.fn(async () => 0),
+    aggregate: vi.fn(async () => ({
+      _sum: { resultByteSize: ownedBytes },
+    })),
+    findFirst: vi.fn(async () => null),
+  };
+  const pendingStorageDeletion = {
+    upsert: vi.fn(async ({ create }: { create: typeof pendingDeletion }) => {
+      pendingDeletion = create;
+      return create;
+    }),
+    findMany: vi.fn(async () =>
+      pendingDeletion
+        ? [{ bucket: pendingDeletion.bucket, path: pendingDeletion.path }]
+        : [],
+    ),
+    findUnique: vi.fn(async () => pendingDeletion),
+    delete: vi.fn(async () => {
+      pendingDeletion = null;
+      return {};
+    }),
+    updateMany: vi.fn(async () => ({ count: pendingDeletion ? 1 : 0 })),
   };
   const transaction = {
     $queryRaw: vi.fn(async () => [{ id: row.id }]),
     uploadIntent,
-    imageResource: { create: imageResourceCreate },
+    imageResource: {
+      create: imageResourceCreate,
+      count: vi.fn(async () => 0),
+    },
+    projectMedia: { count: vi.fn(async () => 0) },
+    user: { count: vi.fn(async () => 0) },
+    pendingStorageDeletion,
   };
   const prisma = {
     uploadIntent,
     imageResource: { create: imageResourceCreate },
+    pendingStorageDeletion,
     $transaction: vi.fn(
       async (operation: (client: typeof transaction) => Promise<unknown>) =>
         operation(transaction),
@@ -192,6 +231,10 @@ describe("createUploadIntent declared metadata validation", () => {
           from: () => ({ createSignedUploadUrl }),
         },
       }) as never;
+    const transaction = {
+      $queryRaw: vi.fn(async () => [{ id: "user-1" }]),
+      uploadIntent: { count: vi.fn(async () => 0), create },
+    };
 
     await expect(
       createUploadIntent(
@@ -202,7 +245,14 @@ describe("createUploadIntent declared metadata validation", () => {
           byteSize,
         },
         {
-          prisma: { uploadIntent: { create, updateMany } } as never,
+          prisma: {
+            uploadIntent: { create, updateMany },
+            $transaction: vi.fn(
+              async (
+                operation: (client: typeof transaction) => Promise<unknown>,
+              ) => operation(transaction),
+            ),
+          } as never,
           getStorageClient,
           now: () => NOW,
           uuid: () => "staging-id",
@@ -224,6 +274,37 @@ describe("createUploadIntent declared metadata validation", () => {
       select: { id: true },
     });
     expect(createSignedUploadUrl).toHaveBeenCalledWith("user-1/staging-id");
+  });
+
+  it("rejects the 31st intent in the hour while holding the per-user lock", async () => {
+    const create = vi.fn();
+    const transaction = {
+      $queryRaw: vi.fn(async () => [{ id: "user-1" }]),
+      uploadIntent: {
+        count: vi.fn(async () => MAX_UPLOAD_INTENTS_PER_USER_PER_HOUR),
+        create,
+      },
+    };
+    const prisma = {
+      $transaction: vi.fn(
+        async (operation: (client: typeof transaction) => Promise<unknown>) =>
+          operation(transaction),
+      ),
+    };
+
+    await expect(
+      createUploadIntent(
+        {
+          userId: "user-1",
+          purpose: "project-media",
+          mimeType: "image/png",
+          byteSize: PNG_BYTES.byteLength,
+        },
+        { prisma: prisma as never, now: () => NOW },
+      ),
+    ).rejects.toMatchObject({ status: 429 });
+    expect(transaction.$queryRaw).toHaveBeenCalledOnce();
+    expect(create).not.toHaveBeenCalled();
   });
 });
 
@@ -254,6 +335,13 @@ describe("finalizeUploadIntent", () => {
     });
     expect(second).toEqual(first);
     expect(database.imageResourceCreate).toHaveBeenCalledTimes(1);
+    const resourceInput = database.imageResourceCreate.mock.calls[0]?.[0];
+    if (!resourceInput) throw new Error("Expected an ImageResource create call.");
+    expect(resourceInput.data).toMatchObject({
+      storageBucket: "public-media",
+      storagePath: "user-1/public-id.png",
+      storageByteSize: PNG_BYTES.byteLength,
+    });
     expect(storage.download).toHaveBeenCalledTimes(1);
   });
 
@@ -334,5 +422,32 @@ describe("finalizeUploadIntent", () => {
       mimeType: "image/png",
     });
     expect(database.imageResourceCreate).not.toHaveBeenCalled();
+    expect(database.row).toMatchObject({
+      resultStorageBucket: "public-media",
+      resultStoragePath: "user-1/public-id.png",
+      resultByteSize: PNG_BYTES.byteLength,
+    });
+  });
+
+  it("rejects a server-observed upload that would exceed the owned-byte quota", async () => {
+    const database = fakePrisma(
+      intent({ purpose: "project-media" }),
+      MAX_FINALIZED_OWNED_MEDIA_BYTES - PNG_BYTES.byteLength + 1,
+    );
+    const storage = fakeStorage();
+
+    await expect(
+      finalizeUploadIntent(
+        { userId: "user-1", intentId: "intent-1" },
+        {
+          prisma: database.prisma as never,
+          getStorageClient: storage.getStorageClient,
+          now: () => NOW,
+          uuid: () => "public-id",
+        },
+      ),
+    ).rejects.toMatchObject({ status: 413 });
+    expect(database.row.status).toBe("FAILED");
+    expect(storage.remove).toHaveBeenCalledWith(["user-1/public-id.png"]);
   });
 });

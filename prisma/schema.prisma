@@ -121,6 +121,7 @@ model User {
   gridLayouts                GridLayout[]      @relation("OwnedGridLayouts")
 
   @@index([canvasBackgroundResourceId])
+  @@index([createdAt, id])
 }
 
 model Account {
@@ -184,24 +185,43 @@ model RateLimitAttempt {
 }
 
 model UploadIntent {
-  id                 String             @id @default(cuid())
-  userId             String
-  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  purpose            String
-  declaredMimeType   String
-  declaredByteSize   Int
-  stagingBucket      String
-  stagingPath        String             @unique
-  status             UploadIntentStatus
-  expiresAt          DateTime
-  resultUrl          String?
-  resultMimeType     String?
-  resultResourceId   String?
-  createdAt          DateTime           @default(now())
-  finalizedAt        DateTime?
+  id                  String             @id @default(cuid())
+  userId              String
+  user                User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose             String
+  declaredMimeType    String
+  declaredByteSize    Int
+  stagingBucket       String
+  stagingPath         String             @unique
+  status              UploadIntentStatus
+  expiresAt           DateTime
+  resultUrl           String?
+  resultMimeType      String?
+  resultResourceId    String?
+  resultStorageBucket String?
+  resultStoragePath   String?
+  resultByteSize      Int?
+  storageDeletedAt    DateTime?
+  stagingDeletedAt    DateTime?
+  createdAt           DateTime           @default(now())
+  finalizedAt         DateTime?
 
   @@index([userId])
   @@index([status, expiresAt])
+  @@index([userId, status, storageDeletedAt])
+  @@index([resultStorageBucket, resultStoragePath])
+}
+
+model PendingStorageDeletion {
+  bucket    String
+  path      String
+  reason    String
+  createdAt DateTime @default(now())
+  attempts  Int      @default(0)
+  lastError String?
+
+  @@id([bucket, path])
+  @@index([attempts, createdAt])
 }
 
 model Project {
@@ -222,11 +242,15 @@ model Project {
   reports         Report[]
   canvasElements  CanvasElement[]
   gridLayouts     GridLayout[]
-  gridBlocks      GridBlock[]      @relation("GridBlockProject")
+  gridBlocks      GridBlock[]     @relation("GridBlockProject")
 
   @@unique([id, userId])
   @@index([userId])
   @@index([category])
+  @@index([userId, private, createdAt, id])
+  @@index([private, createdAt, id])
+  @@index([category, private, createdAt, id])
+  @@index([hashtags], type: Gin)
 }
 
 model GridLayout {
@@ -319,24 +343,33 @@ model ImageResource {
   user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   url             String
   mimeType        String
+  storageBucket   String?
+  storagePath     String?
+  storageByteSize Int?
   createdAt       DateTime        @default(now())
   removedAt       DateTime?
   elements        CanvasElement[]
   backgroundUsers User[]          @relation("BackgroundResource")
 
   @@index([userId, removedAt])
+  @@index([storageBucket, storagePath])
 }
 
 model ProjectMedia {
-  id        String    @id @default(cuid())
-  projectId String
-  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  kind      MediaKind
-  url       String
-  mimeType  String?
-  order     Int       @default(0)
+  id              String    @id @default(cuid())
+  projectId       String
+  project         Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  kind            MediaKind
+  url             String
+  mimeType        String?
+  storageBucket   String?
+  storagePath     String?
+  storageByteSize Int?
+  order           Int       @default(0)
 
   @@index([projectId])
+  @@index([projectId, order, id])
+  @@index([storageBucket, storagePath])
 }
 
 model Report {
@@ -353,4 +386,5 @@ model Report {
   @@index([projectId])
   @@index([reportedUserId])
   @@index([createdAt])
+  @@index([createdAt, id])
 }

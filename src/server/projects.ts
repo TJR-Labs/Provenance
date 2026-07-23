@@ -1,4 +1,9 @@
-import { Category, MediaKind, type PrismaClient } from "../../generated/prisma";
+import {
+  Category,
+  MediaKind,
+  Prisma,
+  type PrismaClient,
+} from "../../generated/prisma";
 import { z } from "zod";
 
 import { classifyProjectMedia } from "~/lib/project-media";
@@ -7,6 +12,17 @@ import {
   publicGridBlockSelect,
   serializePublicGridLayout,
 } from "~/server/grid-layouts";
+import {
+  clampPageSize,
+  createdAtIdCursorWhere,
+  pageFromRows,
+  PUBLIC_PROJECT_PAGE_SIZE,
+} from "~/server/pagination";
+import {
+  queueStorageDeletions,
+  reconcilePendingStorageDeletions,
+  type StorageObjectKey,
+} from "~/server/storage-deletions";
 
 type ProjectDelegate = Pick<
   PrismaClient["project"],
@@ -15,6 +31,43 @@ type ProjectDelegate = Pick<
 type UserReader = Pick<PrismaClient["user"], "findUniqueOrThrow">;
 type CanvasElementReader = Pick<PrismaClient["canvasElement"], "findMany">;
 type GridLayoutReader = Pick<PrismaClient["gridLayout"], "findFirst">;
+type PopularHashtagReader = Pick<PrismaClient, "$queryRaw">;
+
+type ProjectPagination = {
+  cursor?: string;
+  limit?: number;
+};
+
+const projectListSelect = {
+  id: true,
+  title: true,
+  description: true,
+  category: true,
+  hashtags: true,
+  createdAt: true,
+  media: {
+    select: { url: true, mimeType: true },
+    orderBy: [{ order: "asc" }, { id: "asc" }],
+    take: 1,
+  },
+  user: { select: { username: true, displayName: true } },
+} satisfies Prisma.ProjectSelect;
+
+type ProjectListRow = Prisma.ProjectGetPayload<{
+  select: typeof projectListSelect;
+}>;
+
+function projectListPage(rows: ProjectListRow[], pageSize: number) {
+  return pageFromRows(rows, pageSize, (row) => ({
+    id: row.id,
+    title: row.title,
+    description: row.description,
+    category: row.category,
+    hashtags: row.hashtags,
+    media: row.media,
+    user: row.user,
+  }));
+}
 
 export const projectLayouts = ["default", "gallery", "writeup"] as const;
 
@@ -38,6 +91,12 @@ export const projectInputSchema = z.object({
 
 export type ProjectInput = z.infer<typeof projectInputSchema>;
 
+type ProjectWriter = PrismaClient | ProjectDelegate;
+
+function isProjectDatabase(writer: ProjectWriter): writer is PrismaClient {
+  return "$transaction" in writer && "project" in writer;
+}
+
 export function normalizeProjectInput(rawInput: ProjectInput) {
   const input = projectInputSchema.parse(rawInput);
   return {
@@ -55,12 +114,170 @@ export function normalizeProjectInput(rawInput: ProjectInput) {
 export async function createProject(
   userId: string,
   rawInput: ProjectInput,
-  projects: ProjectDelegate = db.project,
+  writer: ProjectWriter = db,
 ) {
   const input = normalizeProjectInput(rawInput);
-  return projects.create({
-    data: {
+  if (!isProjectDatabase(writer)) {
+    return writer.create({
+      data: {
+        userId,
+        title: input.title,
+        description: input.description,
+        category: input.category,
+        hashtags: input.hashtags,
+        links: input.links,
+        layout: input.layout,
+        private: input.private,
+        excludeFromFeed: input.excludeFromFeed,
+        media: { create: input.media },
+      },
+      include: {
+        media: { orderBy: { order: "asc" } },
+        user: { select: { id: true, username: true, displayName: true } },
+      },
+    });
+  }
+
+  return writer.$transaction(async (transaction) => {
+    const media = await attachOwnedStorageMetadata(
+      transaction,
       userId,
+      input.media,
+    );
+    return transaction.project.create({
+      data: {
+        userId,
+        title: input.title,
+        description: input.description,
+        category: input.category,
+        hashtags: input.hashtags,
+        links: input.links,
+        layout: input.layout,
+        private: input.private,
+        excludeFromFeed: input.excludeFromFeed,
+        media: { create: media },
+      },
+      include: {
+        media: { orderBy: { order: "asc" } },
+        user: { select: { id: true, username: true, displayName: true } },
+      },
+    });
+  });
+}
+
+async function attachOwnedStorageMetadata(
+  transaction: Prisma.TransactionClient,
+  userId: string,
+  media: ReturnType<typeof normalizeProjectInput>["media"],
+) {
+  const urls = media.flatMap((item) =>
+    item.kind === MediaKind.UPLOAD ? [item.url] : [],
+  );
+  if (urls.length === 0) return media;
+
+  const candidates = await transaction.uploadIntent.findMany({
+    where: {
+      userId,
+      purpose: "project-media",
+      status: "FINALIZED",
+      resultUrl: { in: urls },
+      resultStorageBucket: { not: null },
+      resultStoragePath: { not: null },
+      resultByteSize: { not: null },
+    },
+    select: { id: true },
+  });
+  for (const candidate of candidates) {
+    // Reconciliation locks the same ledger row before deleting Storage. This
+    // prevents a project from attaching an object while it is being removed.
+    await transaction.$queryRaw`SELECT "id" FROM "UploadIntent" WHERE "id" = ${candidate.id} FOR UPDATE`;
+  }
+
+  const owned = await transaction.uploadIntent.findMany({
+    where: {
+      id: { in: candidates.map((candidate) => candidate.id) },
+      storageDeletedAt: null,
+    },
+    select: {
+      resultUrl: true,
+      resultStorageBucket: true,
+      resultStoragePath: true,
+      resultByteSize: true,
+    },
+  });
+  if (owned.length !== candidates.length) {
+    throw new ProjectMediaUnavailableError();
+  }
+  const byUrl = new Map(
+    owned.flatMap((intent) =>
+      intent.resultUrl &&
+      intent.resultStorageBucket &&
+      intent.resultStoragePath &&
+      intent.resultByteSize !== null
+        ? [[intent.resultUrl, intent] as const]
+        : [],
+    ),
+  );
+  const objects = [...byUrl.values()].map((intent) => ({
+    bucket: intent.resultStorageBucket!,
+    path: intent.resultStoragePath!,
+  }));
+  if (objects.length > 0) {
+    await transaction.pendingStorageDeletion.deleteMany({
+      where: {
+        OR: objects.map((object) => ({
+          bucket: object.bucket,
+          path: object.path,
+        })),
+      },
+    });
+  }
+
+  return media.map((item) => {
+    const intent =
+      item.kind === MediaKind.UPLOAD ? byUrl.get(item.url) : undefined;
+    return intent
+      ? {
+          ...item,
+          storageBucket: intent.resultStorageBucket,
+          storagePath: intent.resultStoragePath,
+          storageByteSize: intent.resultByteSize,
+        }
+      : item;
+  });
+}
+
+function ownedStorageObjects(
+  media: {
+    storageBucket: string | null;
+    storagePath: string | null;
+  }[],
+) {
+  return media.flatMap((item) =>
+    item.storageBucket && item.storagePath
+      ? [{ bucket: item.storageBucket, path: item.storagePath }]
+      : [],
+  );
+}
+
+async function attemptStorageDeletionBestEffort(
+  database: PrismaClient,
+  objects: StorageObjectKey[],
+) {
+  if (objects.length === 0) return;
+  try {
+    await reconcilePendingStorageDeletions({ prisma: database, only: objects });
+  } catch (error) {
+    console.error("Project Storage cleanup attempt failed", error);
+  }
+}
+
+function projectWriteData(
+  input: ReturnType<typeof normalizeProjectInput>,
+  media: Awaited<ReturnType<typeof attachOwnedStorageMetadata>>,
+) {
+  return {
+    data: {
       title: input.title,
       description: input.description,
       category: input.category,
@@ -69,61 +286,111 @@ export async function createProject(
       layout: input.layout,
       private: input.private,
       excludeFromFeed: input.excludeFromFeed,
-      media: { create: input.media },
+      media: { deleteMany: {}, create: media },
     },
-    include: {
-      media: { orderBy: { order: "asc" } },
-      user: { select: { id: true, username: true, displayName: true } },
-    },
-  });
+  };
 }
 
 export async function updateProject(
   projectId: string,
   userId: string,
   rawInput: ProjectInput,
-  projects: ProjectDelegate = db.project,
+  writer: ProjectWriter = db,
 ) {
-  const existing = await projects.findUnique({
-    where: { id: projectId },
-    select: { userId: true },
-  });
-  if (!existing) throw new ProjectNotFoundError();
-  if (existing.userId !== userId) throw new ProjectOwnershipError();
+  if (!isProjectDatabase(writer)) {
+    const existing = await writer.findUnique({
+      where: { id: projectId },
+      select: { userId: true },
+    });
+    if (!existing) throw new ProjectNotFoundError();
+    if (existing.userId !== userId) throw new ProjectOwnershipError();
+    const input = normalizeProjectInput(rawInput);
+    return writer.update({
+      where: { id: projectId },
+      ...projectWriteData(input, input.media),
+      include: {
+        media: { orderBy: { order: "asc" } },
+        user: { select: { id: true, username: true, displayName: true } },
+      },
+    });
+  }
 
   const input = normalizeProjectInput(rawInput);
-  return projects.update({
-    where: { id: projectId },
-    data: {
-      title: input.title,
-      description: input.description,
-      category: input.category,
-      hashtags: input.hashtags,
-      links: input.links,
-      layout: input.layout,
-      private: input.private,
-      excludeFromFeed: input.excludeFromFeed,
-      media: { deleteMany: {}, create: input.media },
-    },
-    include: {
-      media: { orderBy: { order: "asc" } },
-      user: { select: { id: true, username: true, displayName: true } },
-    },
+  const result = await writer.$transaction(async (transaction) => {
+    const existing = await transaction.project.findUnique({
+      where: { id: projectId },
+      select: {
+        userId: true,
+        media: { select: { storageBucket: true, storagePath: true } },
+      },
+    });
+    if (!existing) throw new ProjectNotFoundError();
+    if (existing.userId !== userId) throw new ProjectOwnershipError();
+
+    const queued = await queueStorageDeletions(
+      transaction,
+      ownedStorageObjects(existing.media),
+      "project media replaced",
+    );
+    const media = await attachOwnedStorageMetadata(
+      transaction,
+      userId,
+      input.media,
+    );
+    const project = await transaction.project.update({
+      where: { id: projectId },
+      ...projectWriteData(input, media),
+      include: {
+        media: { orderBy: { order: "asc" } },
+        user: { select: { id: true, username: true, displayName: true } },
+      },
+    });
+    return { project, queued };
   });
+
+  await attemptStorageDeletionBestEffort(writer, result.queued);
+  return result.project;
 }
 
 export async function deleteProject(
   projectId: string,
   userId: string,
-  projects: ProjectDelegate = db.project,
+  writer: ProjectWriter = db,
 ) {
-  const existing = await projects.findUnique({
-    where: { id: projectId },
-    select: { userId: true },
+  if (!isProjectDatabase(writer)) {
+    const existing = await writer.findUnique({
+      where: { id: projectId },
+      select: { userId: true },
+    });
+    if (!existing) throw new ProjectNotFoundError();
+    if (existing.userId !== userId) throw new ProjectOwnershipError();
+    return writer.delete({ where: { id: projectId } });
+  }
+
+  const result = await writer.$transaction(async (transaction) => {
+    const existing = await transaction.project.findUnique({
+      where: { id: projectId },
+      select: {
+        userId: true,
+        media: { select: { storageBucket: true, storagePath: true } },
+      },
+    });
+    if (!existing) throw new ProjectNotFoundError();
+    if (existing.userId !== userId) throw new ProjectOwnershipError();
+
+    const queued = await queueStorageDeletions(
+      transaction,
+      ownedStorageObjects(existing.media),
+      "project deleted",
+    );
+    const project = await transaction.project.delete({
+      where: { id: projectId },
+    });
+    return { project, queued };
   });
-  if (!existing) throw new ProjectNotFoundError();
-  if (existing.userId !== userId) throw new ProjectOwnershipError();
-  return projects.delete({ where: { id: projectId } });
+
+  await attemptStorageDeletionBestEffort(writer, result.queued);
+  return result.project;
 }
 
 export async function getPublicProject(
@@ -186,86 +453,100 @@ export async function getPublicProject(
     : project;
 }
 
-export function listProjectsByUsername(
+export async function listProjectsByUsername(
   username: string,
   viewerId: string | null,
   projects: ProjectDelegate = db.project,
+  pagination: ProjectPagination = {},
 ) {
-  return projects.findMany({
-    where: viewerId
-      ? {
-          user: { username: username.toLowerCase(), banned: false },
-          OR: [
-            { userId: viewerId },
-            { private: false, user: { private: false } },
-          ],
-        }
-      : {
+  const pageSize = clampPageSize(pagination.limit, PUBLIC_PROJECT_PAGE_SIZE);
+  const visibilityWhere: Prisma.ProjectWhereInput = viewerId
+    ? {
+        user: { username: username.toLowerCase(), banned: false },
+        OR: [
+          { userId: viewerId },
+          { private: false, user: { private: false } },
+        ],
+      }
+    : {
+        private: false,
+        user: {
+          username: username.toLowerCase(),
+          banned: false,
           private: false,
-          user: {
-            username: username.toLowerCase(),
-            banned: false,
-            private: false,
-          },
         },
-    include: {
-      media: { orderBy: { order: "asc" } },
-      user: { select: { id: true, username: true, displayName: true } },
-    },
-    orderBy: { createdAt: "desc" },
+      };
+  const cursorWhere = createdAtIdCursorWhere(pagination.cursor);
+  const rows = await projects.findMany({
+    where: cursorWhere
+      ? { AND: [visibilityWhere, cursorWhere] }
+      : visibilityWhere,
+    select: projectListSelect,
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: pageSize + 1,
   });
+  return projectListPage(rows, pageSize);
 }
 
-export function discoverProjects(
-  filters: { category?: Category; hashtag?: string },
+export async function discoverProjects(
+  filters: {
+    category?: Category;
+    hashtag?: string;
+    cursor?: string;
+    limit?: number;
+  },
   viewerId: string | null,
   projects: ProjectDelegate = db.project,
 ) {
   void viewerId;
+  const pageSize = clampPageSize(filters.limit, PUBLIC_PROJECT_PAGE_SIZE);
   const unfiltered = !filters.category && !filters.hashtag;
-  return projects.findMany({
-    where: {
-      user: { banned: false, private: false },
-      private: false,
-      ...(unfiltered && { excludeFromFeed: false }),
-      ...(filters.category && { category: filters.category }),
-      ...(filters.hashtag && {
-        hashtags: {
-          has: filters.hashtag.replace(/^#/, "").trim().toLowerCase(),
-        },
-      }),
-    },
-    include: {
-      media: { orderBy: { order: "asc" } },
-      user: { select: { id: true, username: true, displayName: true } },
-    },
-    orderBy: { createdAt: "desc" },
+  const visibilityWhere: Prisma.ProjectWhereInput = {
+    user: { banned: false, private: false },
+    private: false,
+    ...(unfiltered && { excludeFromFeed: false }),
+    ...(filters.category && { category: filters.category }),
+    ...(filters.hashtag && {
+      hashtags: {
+        has: filters.hashtag.replace(/^#/, "").trim().toLowerCase(),
+      },
+    }),
+  };
+  const cursorWhere = createdAtIdCursorWhere(filters.cursor);
+  const rows = await projects.findMany({
+    where: cursorWhere
+      ? { AND: [visibilityWhere, cursorWhere] }
+      : visibilityWhere,
+    select: projectListSelect,
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: pageSize + 1,
   });
+  return projectListPage(rows, pageSize);
 }
 
 // Surfaces the hashtags actually in use across public (non-banned) profiles,
 // ordered by usage frequency (most-used first) so the Discover page can offer
 // them as filter chips. Reuses Project.hashtags as-is — no separate tag table.
-// The frequency count runs in memory over the selected arrays, which is
-// sufficient at this scale; ties fall back to alphabetical for stable output.
+// PostgreSQL unnests and aggregates the native array, so application memory is
+// bounded by the requested result limit; ties fall back to alphabetical.
 export async function listPopularHashtags(
   limit = 20,
-  projects: ProjectDelegate = db.project,
+  database: PopularHashtagReader = db,
 ) {
-  const rows = await projects.findMany({
-    where: { user: { banned: false, private: false }, private: false },
-    select: { hashtags: true },
-  });
-  const counts = new Map<string, number>();
-  for (const row of rows) {
-    for (const tag of row.hashtags) {
-      counts.set(tag, (counts.get(tag) ?? 0) + 1);
-    }
-  }
-  return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .slice(0, limit)
-    .map(([tag]) => tag);
+  const boundedLimit = clampPageSize(limit, 20);
+  const rows = await database.$queryRaw<{ tag: string }[]>(Prisma.sql`
+    SELECT hashtag."tag"
+    FROM "Project" AS project
+    INNER JOIN "User" AS owner ON owner."id" = project."userId"
+    CROSS JOIN LATERAL UNNEST(project."hashtags") AS hashtag("tag")
+    WHERE project."private" = false
+      AND owner."private" = false
+      AND owner."banned" = false
+    GROUP BY hashtag."tag"
+    ORDER BY COUNT(*) DESC, hashtag."tag" ASC
+    LIMIT ${boundedLimit}
+  `);
+  return rows.map((row) => row.tag);
 }
 
 // Lists the signed-in user's own projects for the "My Work" hub, with
@@ -277,16 +558,25 @@ export async function listMyProjects(
   projects: ProjectDelegate = db.project,
   users: UserReader = db.user,
   canvasElements: CanvasElementReader = db.canvasElement,
+  pagination: ProjectPagination = {},
 ) {
+  const pageSize = clampPageSize(pagination.limit, PUBLIC_PROJECT_PAGE_SIZE);
+  const cursorWhere = createdAtIdCursorWhere(pagination.cursor);
   const [myProjects, user] = await Promise.all([
     projects.findMany({
-      where: { userId },
+      where: cursorWhere ? { AND: [{ userId }, cursorWhere] } : { userId },
       select: {
         id: true,
         title: true,
-        media: { select: { url: true }, orderBy: { order: "asc" }, take: 1 },
+        createdAt: true,
+        media: {
+          select: { url: true },
+          orderBy: [{ order: "asc" }, { id: "asc" }],
+          take: 1,
+        },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: pageSize + 1,
     }),
     users.findUniqueOrThrow({
       where: { id: userId },
@@ -299,12 +589,24 @@ export async function listMyProjects(
     (user.canvasPublishedAt === null ||
       user.canvasDraftSavedAt > user.canvasPublishedAt);
   const state = hasNewerDraft ? "DRAFT" : "PUBLISHED";
+  const page = pageFromRows(myProjects, pageSize, (project) => ({
+    id: project.id,
+    title: project.title,
+    thumbnailUrl: project.media[0]?.url ?? null,
+  }));
+  const projectIds = page.items.map((project) => project.id);
 
   const placedElements =
-    user.canvasDraftSavedAt === null && user.canvasPublishedAt === null
+    projectIds.length === 0 ||
+    (user.canvasDraftSavedAt === null && user.canvasPublishedAt === null)
       ? []
       : await canvasElements.findMany({
-          where: { userId, state, type: "PROJECT" },
+          where: {
+            userId,
+            state,
+            type: "PROJECT",
+            projectId: { in: projectIds },
+          },
           select: { projectId: true },
         });
   const placedProjectIds = new Set(
@@ -313,13 +615,20 @@ export async function listMyProjects(
     ),
   );
 
-  return myProjects.map((project) => ({
-    id: project.id,
-    title: project.title,
-    thumbnailUrl: project.media[0]?.url ?? null,
-    placed: placedProjectIds.has(project.id),
-  }));
+  return {
+    items: page.items.map((project) => ({
+      ...project,
+      placed: placedProjectIds.has(project.id),
+    })),
+    nextCursor: page.nextCursor,
+  };
 }
 
 export class ProjectNotFoundError extends Error {}
 export class ProjectOwnershipError extends Error {}
+export class ProjectMediaUnavailableError extends Error {
+  constructor() {
+    super("One or more uploaded media items are no longer available.");
+    this.name = "ProjectMediaUnavailableError";
+  }
+}

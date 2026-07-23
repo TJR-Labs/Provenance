@@ -15,7 +15,8 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
 export default async function ReportsPage() {
   const session = await auth();
   if (session?.user.role !== Role.ADMIN) forbidden();
-  const reports = await (await getServerCaller()).moderation.listReports();
+  const reportPage = await (await getServerCaller()).moderation.listReports();
+  const reports = reportPage.items;
 
   return (
     <section className="mx-auto w-full max-w-6xl px-6 py-14">

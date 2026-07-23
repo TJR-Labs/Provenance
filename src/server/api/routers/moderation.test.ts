@@ -4,6 +4,10 @@ vi.mock("~/server/auth", () => ({ auth: vi.fn() }));
 
 import { Role } from "../../../../generated/prisma";
 import { appRouter } from "~/server/api/root";
+import {
+  RATE_LIMIT_ATOMIC_UPDATE,
+  type RateLimitConfig,
+} from "~/server/rate-limit";
 
 interface RateLimitRow {
   scope: string;
@@ -17,12 +21,51 @@ function fakeRateLimits() {
   const rows = new Map<string, RateLimitRow>();
   const rowKey = (scope: string, key: string) => `${scope}:${key}`;
   return {
+    [RATE_LIMIT_ATOMIC_UPDATE]: vi.fn(
+      async (config: Omit<RateLimitConfig, "message">) => {
+        const now = new Date();
+        const k = rowKey(config.scope, config.key);
+        const existing = rows.get(k);
+        const activelyLocked =
+          (existing?.lockedUntil?.getTime() ?? 0) > now.getTime();
+        const startsNewWindow =
+          !existing ||
+          now.getTime() - existing.windowStart.getTime() >= config.windowMs;
+        const count = activelyLocked
+          ? existing!.count
+          : startsNewWindow
+            ? 1
+            : existing.count + 1;
+        const windowStart =
+          activelyLocked || !startsNewWindow
+            ? (existing?.windowStart ?? now)
+            : now;
+        const lockedUntil = activelyLocked
+          ? existing!.lockedUntil
+          : count >= config.limit
+            ? new Date(now.getTime() + config.lockoutMs)
+            : null;
+        rows.set(k, {
+          scope: config.scope,
+          key: config.key,
+          count,
+          windowStart,
+          lockedUntil,
+        });
+        return {
+          allowed: lockedUntil === null && count < config.limit,
+          count,
+          lockedUntil,
+        };
+      },
+    ),
     findUnique: vi.fn(
       async ({
         where,
       }: {
         where: { scope_key: { scope: string; key: string } };
-      }) => rows.get(rowKey(where.scope_key.scope, where.scope_key.key)) ?? null,
+      }) =>
+        rows.get(rowKey(where.scope_key.scope, where.scope_key.key)) ?? null,
     ),
     upsert: vi.fn(
       async ({
@@ -64,14 +107,19 @@ function session(userId: string) {
   };
 }
 
-function callerFor(userId: string, rateLimits: ReturnType<typeof fakeRateLimits>) {
+function callerFor(
+  userId: string,
+  rateLimits: ReturnType<typeof fakeRateLimits>,
+) {
   let nextId = 1;
   const db = {
     report: {
-      create: vi.fn().mockImplementation(async ({ data }: { data: unknown }) => ({
-        id: `report-${nextId++}`,
-        ...(data as Record<string, unknown>),
-      })),
+      create: vi
+        .fn()
+        .mockImplementation(async ({ data }: { data: unknown }) => ({
+          id: `report-${nextId++}`,
+          ...(data as Record<string, unknown>),
+        })),
     },
     user: { findUnique: vi.fn().mockResolvedValue({ id: "reported-user" }) },
     rateLimitAttempt: rateLimits,
@@ -113,8 +161,8 @@ describe("moderation.report rate limiting", () => {
     const rateLimits = fakeRateLimits();
     const throttled = callerFor("user-1", rateLimits);
     for (let i = 0; i < 10; i += 1) {
-      await throttled
-        .moderation.report({ projectId: `project-${i}` })
+      await throttled.moderation
+        .report({ projectId: `project-${i}` })
         .catch(() => undefined);
     }
 
@@ -146,5 +194,39 @@ describe("moderation.report rate limiting", () => {
     await expect(
       caller.moderation.report({ projectId: "project-after-reset" }),
     ).resolves.toMatchObject({ projectId: "project-after-reset" });
+  });
+});
+
+describe("moderation.listReports pagination input", () => {
+  function adminCaller(findMany: ReturnType<typeof vi.fn>) {
+    return appRouter.createCaller({
+      db: { report: { findMany } } as never,
+      headers: new Headers(),
+      session: {
+        ...session("admin-1"),
+        user: { ...session("admin-1").user, role: Role.ADMIN },
+      },
+    });
+  }
+
+  it("uses the admin default and clamps oversized requests to 100", async () => {
+    const findMany = vi.fn().mockResolvedValue([]);
+    const caller = adminCaller(findMany);
+
+    await caller.moderation.listReports();
+    await caller.moderation.listReports({ limit: 1_000 });
+
+    expect(findMany.mock.calls[0]?.[0]).toMatchObject({ take: 51 });
+    expect(findMany.mock.calls[1]?.[0]).toMatchObject({ take: 101 });
+  });
+
+  it("rejects malformed cursors before querying reports", async () => {
+    const findMany = vi.fn();
+    const caller = adminCaller(findMany);
+
+    await expect(
+      caller.moderation.listReports({ cursor: "malformed" }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(findMany).not.toHaveBeenCalled();
   });
 });

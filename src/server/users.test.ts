@@ -8,11 +8,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("~/server/auth/password", () => ({
   hashPassword: vi.fn(async (password: string) => `hashed:${password}`),
   verifyPassword: vi.fn(
-    async (password: string, hash: string | null) => hash === `hashed:${password}`,
+    async (password: string, hash: string | null) =>
+      hash === `hashed:${password}`,
   ),
 }));
 
 import { hashPassword } from "~/server/auth/password";
+import {
+  RATE_LIMIT_ATOMIC_UPDATE,
+  type RateLimitConfig,
+} from "~/server/rate-limit";
 import {
   changePassword,
   createUser,
@@ -32,8 +37,54 @@ interface RateLimitRow {
 function fakeRateLimits(rows = new Map<string, RateLimitRow>()) {
   const rowKey = (scope: string, key: string) => `${scope}:${key}`;
   return {
+    [RATE_LIMIT_ATOMIC_UPDATE]: vi.fn(
+      async (
+        config: Omit<RateLimitConfig, "message">,
+        mode: "consume" | "failure",
+      ) => {
+        const now = new Date();
+        const k = rowKey(config.scope, config.key);
+        const existing = rows.get(k);
+        const activelyLocked =
+          (existing?.lockedUntil?.getTime() ?? 0) > now.getTime();
+        const startsNewWindow =
+          !existing ||
+          (mode === "failure" && existing.lockedUntil !== null) ||
+          now.getTime() - existing.windowStart.getTime() >= config.windowMs;
+        const count = activelyLocked
+          ? existing!.count
+          : startsNewWindow
+            ? 1
+            : existing.count + 1;
+        const windowStart =
+          activelyLocked || !startsNewWindow
+            ? (existing?.windowStart ?? now)
+            : now;
+        const lockedUntil = activelyLocked
+          ? existing!.lockedUntil
+          : count >= config.limit
+            ? new Date(now.getTime() + config.lockoutMs)
+            : null;
+        rows.set(k, {
+          scope: config.scope,
+          key: config.key,
+          count,
+          windowStart,
+          lockedUntil,
+        });
+        return {
+          allowed: lockedUntil === null && count < config.limit,
+          count,
+          lockedUntil,
+        };
+      },
+    ),
     findUnique: vi.fn(
-      async ({ where }: { where: { scope_key: { scope: string; key: string } } }) =>
+      async ({
+        where,
+      }: {
+        where: { scope_key: { scope: string; key: string } };
+      }) =>
         rows.get(rowKey(where.scope_key.scope, where.scope_key.key)) ?? null,
     ),
     upsert: vi.fn(
@@ -53,11 +104,13 @@ function fakeRateLimits(rows = new Map<string, RateLimitRow>()) {
         return row;
       },
     ),
-    deleteMany: vi.fn(async ({ where }: { where: { scope: string; key: string } }) => {
-      const k = rowKey(where.scope, where.key);
-      const deleted = rows.delete(k);
-      return { count: deleted ? 1 : 0 };
-    }),
+    deleteMany: vi.fn(
+      async ({ where }: { where: { scope: string; key: string } }) => {
+        const k = rowKey(where.scope, where.key);
+        const deleted = rows.delete(k);
+        return { count: deleted ? 1 : 0 };
+      },
+    ),
   };
 }
 
@@ -140,11 +193,9 @@ describe("user accounts", () => {
 
     function fakeUsers(currentPassword: string) {
       return {
-        findUnique: vi
-          .fn()
-          .mockImplementation(async () => ({
-            passwordHash: await hashPassword(currentPassword),
-          })),
+        findUnique: vi.fn().mockImplementation(async () => ({
+          passwordHash: await hashPassword(currentPassword),
+        })),
         create: vi.fn(),
         update: vi.fn(),
       };

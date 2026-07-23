@@ -41,6 +41,8 @@ npm audit --omit=dev
 npx prisma validate
 ```
 
+The rate-limit concurrency integration cases run only against a reachable `DATABASE_URL` whose host/database name identifies it as `test` or `ci`. For an isolated test database with a different provider-assigned name, explicitly opt in for that shell session with `$env:RUN_DATABASE_INTEGRATION_TESTS="true"` before `npm test`. Never set that flag when `DATABASE_URL` targets development or production data.
+
 CI and branch protection on `main` must require the lint/typecheck/test/build/audit job to pass before merge.
 
 ### Deployment
@@ -49,15 +51,53 @@ Vercel runs `npm run vercel-build`. The build runs `prisma migrate deploy` only 
 
 In the Vercel project settings, scope `DATABASE_URL`, `DIRECT_URL`, Supabase Storage (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_STORAGE_BUCKET`, and `SUPABASE_STORAGE_STAGING_BUCKET`), and OAuth credentials separately for Preview and Production. Preview values must point only to non-production resources so a preview deployment cannot access the production database, Storage project, bucket, or OAuth application.
 
-### Upload staging cleanup
+Configure environment values by Vercel scope:
 
-Run abandoned/failed upload cleanup manually with:
+| Scope       | Configuration                                                                                                                                                                                                                                                  |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Development | Use local or development-only `DATABASE_URL`, `DIRECT_URL`, Supabase project/buckets, and `AUTH_SECRET`. OAuth is optional, but each configured provider requires both its client ID and client secret.                                                        |
+| Preview     | Use preview-only database URLs, Supabase project/buckets, `AUTH_SECRET`, and OAuth applications. Preview database, Storage, and OAuth resources must be isolated from Production.                                                                              |
+| Production  | Set dedicated production `AUTH_SECRET`, `DATABASE_URL`, `DIRECT_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_STORAGE_BUCKET`, and `SUPABASE_STORAGE_STAGING_BUCKET`. Set both values for each enabled OAuth provider; omit both to disable it. |
+
+Never copy Production database, Supabase service-role, Storage, OAuth, or backup credentials into Development or Preview scopes.
+
+### Storage reconciliation and reporting
+
+Run the full idempotent reconciliation job manually with:
 
 ```powershell
-npm run cleanup:uploads
+npm run storage:reconcile
 ```
 
-Schedule this command hourly with an external scheduler, or expose equivalent protected server-side invocation through Vercel Cron in a later deployment pass. A successful run prints JSON counts for selected, deleted, expired, and failed intents; record that output in the scheduler logs to verify the last successful execution. The job is idempotent and never selects finalized intents.
+This retries pending public-object deletions and removes failed, expired, or abandoned staging objects. Finalized staging leftovers are eligible only after the upload intent's 10-minute retention window. Schedule this command hourly with an external scheduler, or expose equivalent protected server-side invocation through Vercel Cron in a later deployment pass. Record its JSON output in scheduler logs to verify the last successful execution. A nonzero exit code means at least one Storage operation failed and remains eligible for retry.
+
+The narrower `npm run cleanup:uploads` command remains available when only staging cleanup is needed. For an aggregate, secret-free operational report, run:
+
+```powershell
+npm run storage:report
+```
+
+The report prints total finalized owned bytes, pending-deletion count, abandoned-staging count, and the count of deletion records that have reached the reconciliation failure threshold. It never prints Storage credentials or per-object provider errors.
+
+### Database backups
+
+Supabase's free tier does not include automatic Postgres backups. Run a logical export with:
+
+```powershell
+npm run backup:database
+```
+
+This writes a timestamped, gzip-compressed `pg_dump` of `DIRECT_URL` to `./backups` (override with `BACKUP_OUTPUT_DIR`) and never prints the connection string. Schedule this daily, then encrypt and copy the dump off-site — never into this repository or the project's own Supabase Storage bucket. See `docs/runbook.md` for retention, RPO/RTO, the Storage-object backup gap, and the restore-drill procedure.
+
+### Security and OAuth cleanup
+
+Remove stale rate-limit/login-attempt rows and expired OAuth signup/link intents with:
+
+```powershell
+npm run cleanup:rate-limits
+```
+
+Schedule this command at least daily (hourly is also safe). Limiter rows remain eligible for enforcement throughout their active window or lockout and are retained for a full day of inactivity before deletion. The command prints only aggregate deletion counts; keep that output in scheduler logs to verify the last successful run.
 
 ### Grid layout migration
 

@@ -6,6 +6,11 @@ import {
   createTRPCRouter,
   protectedProcedure,
 } from "~/server/api/trpc";
+import {
+  ADMIN_PAGE_SIZE,
+  paginationCursorSchema,
+  pageSizeSchema,
+} from "~/server/pagination";
 import { consumeRateLimit } from "~/server/rate-limit";
 import {
   createReport,
@@ -50,7 +55,16 @@ export const moderationRouter = createTRPCRouter({
       }
     }),
 
-  listReports: adminProcedure.query(({ ctx }) => listReports(ctx.db.report)),
+  listReports: adminProcedure
+    .input(
+      z
+        .object({
+          cursor: paginationCursorSchema.optional(),
+          limit: pageSizeSchema(ADMIN_PAGE_SIZE),
+        })
+        .optional(),
+    )
+    .query(({ ctx, input }) => listReports(ctx.db.report, input)),
 
   removeProject: adminProcedure
     .input(z.object({ projectId: z.string().min(1) }))

@@ -3,6 +3,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const authMock = vi.hoisted(() => vi.fn());
 
 vi.mock("~/server/auth", () => ({ auth: authMock }));
+vi.mock("~/server/db", () => ({ db: {} }));
+vi.mock("~/env", () => ({
+  env: {
+    SUPABASE_URL: "https://example.test",
+    SUPABASE_SERVICE_ROLE_KEY: "service-role-key",
+    SUPABASE_STORAGE_BUCKET: "public-media",
+    SUPABASE_STORAGE_STAGING_BUCKET: "upload-staging",
+    NODE_ENV: "test",
+  },
+}));
 
 import { MAX_IMAGE_BYTES, MAX_VIDEO_BYTES } from "~/server/upload-validation";
 import { POST } from "./route";

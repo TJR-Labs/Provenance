@@ -6,6 +6,7 @@ import {
   createStorageClient,
   type StorageClientFactory,
 } from "~/server/storage";
+import { queueAndDeleteStorageObjectBestEffort } from "~/server/storage-deletions";
 import {
   ALLOWED_UPLOAD_TYPES,
   EXTENSION_BY_MIME_TYPE,
@@ -16,6 +17,9 @@ import {
 } from "~/server/upload-validation";
 
 export const UPLOAD_INTENT_TTL_MS = 10 * 60 * 1000;
+export const UPLOAD_INTENT_RATE_WINDOW_MS = 60 * 60 * 1000;
+export const MAX_UPLOAD_INTENTS_PER_USER_PER_HOUR = 30;
+export const MAX_FINALIZED_OWNED_MEDIA_BYTES = 1024 * 1024 * 1024;
 
 export const UPLOAD_PURPOSES = [
   "project-media",
@@ -43,6 +47,13 @@ export class UploadIntentError extends Error {
   ) {
     super(message);
     this.name = "UploadIntentError";
+  }
+}
+
+class StorageQuotaExceededError extends UploadIntentError {
+  constructor() {
+    super(413, "Storage quota exceeded. Remove existing media and try again.");
+    this.name = "StorageQuotaExceededError";
   }
 }
 
@@ -91,20 +102,39 @@ export async function createUploadIntent(
 
   validateDeclaredUpload(input.purpose, input.mimeType, input.byteSize);
 
-  // Requirements 3.2 and 4 will add atomic per-user quota/throttling here.
   const stagingPath = `${input.userId}/${uuid()}`;
-  const intent = await prisma.uploadIntent.create({
-    data: {
-      userId: input.userId,
-      purpose: input.purpose,
-      declaredMimeType: input.mimeType,
-      declaredByteSize: input.byteSize,
-      stagingBucket: env.SUPABASE_STORAGE_STAGING_BUCKET,
-      stagingPath,
-      status: "PENDING",
-      expiresAt: new Date(now.getTime() + UPLOAD_INTENT_TTL_MS),
-    },
-    select: { id: true },
+  const intent = await prisma.$transaction(async (transaction) => {
+    // The User row is a per-user mutex. Every intent creation takes this lock,
+    // so the count and insert cannot race at the 30/hour boundary.
+    await transaction.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${input.userId} FOR UPDATE`;
+    const recentIntentCount = await transaction.uploadIntent.count({
+      where: {
+        userId: input.userId,
+        createdAt: {
+          gte: new Date(now.getTime() - UPLOAD_INTENT_RATE_WINDOW_MS),
+        },
+      },
+    });
+    if (recentIntentCount >= MAX_UPLOAD_INTENTS_PER_USER_PER_HOUR) {
+      throw new UploadIntentError(
+        429,
+        "Too many upload attempts. Try again later.",
+      );
+    }
+
+    return transaction.uploadIntent.create({
+      data: {
+        userId: input.userId,
+        purpose: input.purpose,
+        declaredMimeType: input.mimeType,
+        declaredByteSize: input.byteSize,
+        stagingBucket: env.SUPABASE_STORAGE_STAGING_BUCKET,
+        stagingPath,
+        status: "PENDING",
+        expiresAt: new Date(now.getTime() + UPLOAD_INTENT_TTL_MS),
+      },
+      select: { id: true },
+    });
   });
 
   const { data, error } = await getStorageClient()
@@ -149,9 +179,53 @@ async function removeObjectBestEffort(
     const { error } = await getStorageClient()
       .storage.from(bucket)
       .remove([path]);
-    if (error) console.error(`${label} cleanup failed`, error);
+    if (error) {
+      console.error(`${label} cleanup failed`, error);
+      return false;
+    }
+    return true;
   } catch (error) {
     console.error(`${label} cleanup failed`, error);
+    return false;
+  }
+}
+
+async function removeStagingObjectBestEffort(
+  prisma: typeof db,
+  getStorageClient: StorageClientFactory,
+  intentId: string,
+  bucket: string,
+  path: string,
+  label: string,
+) {
+  const removed = await removeObjectBestEffort(
+    getStorageClient,
+    bucket,
+    path,
+    label,
+  );
+  if (removed) {
+    await prisma.uploadIntent.updateMany({
+      where: { id: intentId, stagingDeletedAt: null },
+      data: { stagingDeletedAt: new Date() },
+    });
+  }
+}
+
+async function removePublicObjectWithRetry(
+  prisma: typeof db,
+  getStorageClient: StorageClientFactory,
+  bucket: string,
+  path: string,
+  reason: string,
+) {
+  try {
+    await queueAndDeleteStorageObjectBestEffort({ bucket, path }, reason, {
+      prisma,
+      getStorageClient,
+    });
+  } catch (error) {
+    console.error("Unable to queue public Storage cleanup", error);
   }
 }
 
@@ -187,8 +261,10 @@ export async function finalizeUploadIntent(
       where: { id: intent.id, status: "PENDING" },
       data: { status: "EXPIRED" },
     });
-    await removeObjectBestEffort(
+    await removeStagingObjectBestEffort(
+      prisma,
       getStorageClient,
+      intent.id,
       intent.stagingBucket,
       intent.stagingPath,
       "Expired staging upload",
@@ -221,8 +297,10 @@ export async function finalizeUploadIntent(
         where: { id: intent.id, status: "PENDING" },
         data: { status: "FAILED" },
       });
-      await removeObjectBestEffort(
+      await removeStagingObjectBestEffort(
+        prisma,
         getStorageClient,
+        intent.id,
         intent.stagingBucket,
         intent.stagingPath,
         "Invalid staging upload",
@@ -247,8 +325,10 @@ export async function finalizeUploadIntent(
       where: { id: intent.id, status: "PENDING" },
       data: { status: "FAILED" },
     });
-    await removeObjectBestEffort(
+    await removeStagingObjectBestEffort(
+      prisma,
       getStorageClient,
+      intent.id,
       intent.stagingBucket,
       intent.stagingPath,
       "Failed staging upload",
@@ -289,10 +369,36 @@ export async function finalizeUploadIntent(
         return { kind: "expired" as const };
       }
 
+      // All finalizations for one owner serialize on the User row. The sum
+      // therefore observes every previously committed finalization and cannot
+      // race past the per-user quota.
+      await transaction.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${input.userId} FOR UPDATE`;
+      const ownedBytes = await transaction.uploadIntent.aggregate({
+        where: {
+          userId: input.userId,
+          status: "FINALIZED",
+          storageDeletedAt: null,
+        },
+        _sum: { resultByteSize: true },
+      });
+      if (
+        (ownedBytes._sum.resultByteSize ?? 0) + blob.size >
+        MAX_FINALIZED_OWNED_MEDIA_BYTES
+      ) {
+        throw new StorageQuotaExceededError();
+      }
+
       const resource =
         lockedIntent.purpose === "canvas-resource"
           ? await transaction.imageResource.create({
-              data: { userId: input.userId, url, mimeType },
+              data: {
+                userId: input.userId,
+                url,
+                mimeType,
+                storageBucket: env.SUPABASE_STORAGE_BUCKET,
+                storagePath: publicPath,
+                storageByteSize: blob.size,
+              },
               select: {
                 id: true,
                 url: true,
@@ -309,6 +415,9 @@ export async function finalizeUploadIntent(
           resultUrl: url,
           resultMimeType: mimeType,
           resultResourceId: resource?.id ?? null,
+          resultStorageBucket: env.SUPABASE_STORAGE_BUCKET,
+          resultStoragePath: publicPath,
+          resultByteSize: blob.size,
           finalizedAt,
         },
       });
@@ -318,11 +427,12 @@ export async function finalizeUploadIntent(
     committed = transactionResult.kind === "finalized";
 
     if (transactionResult.kind !== "finalized") {
-      await removeObjectBestEffort(
+      await removePublicObjectWithRetry(
+        prisma,
         getStorageClient,
         env.SUPABASE_STORAGE_BUCKET,
         publicPath,
-        "Duplicate public upload",
+        "duplicate finalization upload",
       );
     }
 
@@ -339,8 +449,10 @@ export async function finalizeUploadIntent(
       );
     }
 
-    await removeObjectBestEffort(
+    await removeStagingObjectBestEffort(
+      prisma,
       getStorageClient,
+      intent.id,
       intent.stagingBucket,
       intent.stagingPath,
       "Finalized staging upload",
@@ -348,21 +460,27 @@ export async function finalizeUploadIntent(
     return transactionResult.result;
   } catch (error) {
     if (!committed) {
-      await removeObjectBestEffort(
+      await removePublicObjectWithRetry(
+        prisma,
         getStorageClient,
         env.SUPABASE_STORAGE_BUCKET,
         publicPath,
-        "Uncommitted public upload",
+        "uncommitted finalization upload",
       );
-      if (!(error instanceof UploadIntentError)) {
+      if (
+        !(error instanceof UploadIntentError) ||
+        error instanceof StorageQuotaExceededError
+      ) {
         await prisma.uploadIntent.updateMany({
           where: { id: intent.id, status: "PENDING" },
           data: { status: "FAILED" },
         });
       }
     }
-    await removeObjectBestEffort(
+    await removeStagingObjectBestEffort(
+      prisma,
       getStorageClient,
+      intent.id,
       intent.stagingBucket,
       intent.stagingPath,
       "Uncommitted staging upload",

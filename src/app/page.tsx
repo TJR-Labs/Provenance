@@ -16,10 +16,11 @@ export default async function Home({ searchParams }: HomeProps) {
   );
   const hashtag = params.hashtag?.trim();
   const caller = await getServerCaller();
-  const [projects, popularHashtags] = await Promise.all([
+  const [projectPage, popularHashtags] = await Promise.all([
     caller.discovery.list({ category, hashtag }),
     caller.discovery.popularHashtags(),
   ]);
+  const projects = projectPage.items;
 
   // A chip filters exactly like typing the tag into the hashtag input and
   // submitting: same query params, preserving any active category filter.

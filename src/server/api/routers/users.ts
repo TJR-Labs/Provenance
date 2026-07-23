@@ -7,6 +7,13 @@ import {
   protectedProcedure,
   publicProcedure,
 } from "~/server/api/trpc";
+import {
+  ADMIN_PAGE_SIZE,
+  createdAtIdCursorWhere,
+  pageFromRows,
+  paginationCursorSchema,
+  pageSizeSchema,
+} from "~/server/pagination";
 import { consumeRateLimit, resolveClientIp } from "~/server/rate-limit";
 import {
   banUser,
@@ -34,19 +41,32 @@ const SIGNUP_RATE_LIMIT_THRESHOLD = 5;
 const SIGNUP_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 
 export const usersRouter = createTRPCRouter({
-  list: adminProcedure.query(({ ctx }) =>
-    ctx.db.user.findMany({
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        username: true,
-        role: true,
-        displayName: true,
-        banned: true,
-        createdAt: true,
-      },
+  list: adminProcedure
+    .input(
+      z
+        .object({
+          cursor: paginationCursorSchema.optional(),
+          limit: pageSizeSchema(ADMIN_PAGE_SIZE),
+        })
+        .optional(),
+    )
+    .query(async ({ ctx, input }) => {
+      const pageSize = input?.limit ?? ADMIN_PAGE_SIZE;
+      const rows = await ctx.db.user.findMany({
+        where: createdAtIdCursorWhere(input?.cursor),
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: pageSize + 1,
+        select: {
+          id: true,
+          username: true,
+          role: true,
+          displayName: true,
+          banned: true,
+          createdAt: true,
+        },
+      });
+      return pageFromRows(rows, pageSize);
     }),
-  ),
 
   signup: publicProcedure
     .input(createUserInputSchema)

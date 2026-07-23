@@ -7,18 +7,26 @@ interface LoginAttemptRow {
   lockedUntil: Date | null;
 }
 
-interface LoginAttemptUpsertArgs {
-  where: { username: string };
-  create: LoginAttemptRow;
-  update: Partial<Omit<LoginAttemptRow, "username">>;
+interface RateLimitRow {
+  scope: string;
+  key: string;
+  count: number;
+  windowStart: Date;
+  lockedUntil: Date | null;
 }
 
 const mocks = vi.hoisted(() => ({
   attempts: new Map<string, LoginAttemptRow>(),
+  ipAttempts: new Map<string, RateLimitRow>(),
   deleteLoginAttempts: vi.fn(),
   findLoginAttempt: vi.fn(),
   findUser: vi.fn(),
-  upsertLoginAttempt: vi.fn(),
+  rateLimits: {
+    deleteMany: vi.fn(),
+    findUnique: vi.fn(),
+    upsert: vi.fn(),
+  },
+  recordLoginFailure: vi.fn(),
   verifyPassword: vi.fn(),
 }));
 
@@ -27,10 +35,14 @@ vi.mock("~/server/db", () => ({
     loginAttempt: {
       deleteMany: mocks.deleteLoginAttempts,
       findUnique: mocks.findLoginAttempt,
-      upsert: mocks.upsertLoginAttempt,
     },
+    rateLimitAttempt: mocks.rateLimits,
     user: { findUnique: mocks.findUser },
   },
+}));
+
+vi.mock("~/server/login-attempts", () => ({
+  recordLoginFailure: mocks.recordLoginFailure,
 }));
 
 vi.mock("~/server/auth/password", () => ({
@@ -39,6 +51,10 @@ vi.mock("~/server/auth/password", () => ({
 
 import { Role } from "../../../generated/prisma";
 import { authConfig } from "~/server/auth/config";
+import {
+  RATE_LIMIT_ATOMIC_UPDATE,
+  type RateLimitConfig,
+} from "~/server/rate-limit";
 
 const user = {
   id: "user-1",
@@ -49,7 +65,11 @@ const user = {
   banned: false,
 };
 
-async function authorize(username: string, password: string) {
+async function authorize(
+  username: string,
+  password: string,
+  ip = "203.0.113.10",
+) {
   const provider = authConfig.providers[0];
   if (
     !provider ||
@@ -70,7 +90,9 @@ async function authorize(username: string, password: string) {
 
   return options.authorize(
     { username, password },
-    new Request("http://localhost/login"),
+    new Request("http://localhost/login", {
+      headers: { "x-forwarded-for": `client-supplied, ${ip}` },
+    }),
   );
 }
 
@@ -79,18 +101,11 @@ beforeEach(() => {
   vi.setSystemTime(new Date("2026-07-15T12:00:00.000Z"));
   vi.clearAllMocks();
   mocks.attempts.clear();
+  mocks.ipAttempts.clear();
 
   mocks.findLoginAttempt.mockImplementation(
     async ({ where }: { where: { username: string } }) =>
       mocks.attempts.get(where.username) ?? null,
-  );
-  mocks.upsertLoginAttempt.mockImplementation(
-    async ({ where, create, update }: LoginAttemptUpsertArgs) => {
-      const existing = mocks.attempts.get(where.username);
-      const loginAttempt = existing ? { ...existing, ...update } : create;
-      mocks.attempts.set(where.username, loginAttempt);
-      return loginAttempt;
-    },
   );
   mocks.deleteLoginAttempts.mockImplementation(
     async ({ where }: { where: { username: string } }) => {
@@ -98,6 +113,88 @@ beforeEach(() => {
       return { count: deleted ? 1 : 0 };
     },
   );
+  mocks.recordLoginFailure.mockImplementation(
+    async (
+      username: string,
+      config: { threshold: number; windowMs: number; lockoutMs: number },
+    ) => {
+      const now = new Date();
+      const existing = mocks.attempts.get(username);
+      const activelyLocked =
+        (existing?.lockedUntil?.getTime() ?? 0) > now.getTime();
+      const startsNewWindow =
+        existing?.lockedUntil !== null ||
+        now.getTime() - (existing?.firstFailedAt.getTime() ?? 0) >=
+          config.windowMs;
+      const failedCount = activelyLocked
+        ? existing!.failedCount
+        : startsNewWindow
+          ? 1
+          : existing.failedCount + 1;
+      mocks.attempts.set(username, {
+        username,
+        failedCount,
+        firstFailedAt:
+          activelyLocked || !startsNewWindow
+            ? (existing?.firstFailedAt ?? now)
+            : now,
+        lockedUntil: activelyLocked
+          ? existing!.lockedUntil
+          : failedCount >= config.threshold
+            ? new Date(now.getTime() + config.lockoutMs)
+            : null,
+      });
+    },
+  );
+  mocks.rateLimits.findUnique.mockImplementation(
+    async ({
+      where,
+    }: {
+      where: { scope_key: { scope: string; key: string } };
+    }) =>
+      mocks.ipAttempts.get(`${where.scope_key.scope}:${where.scope_key.key}`) ??
+      null,
+  );
+  Object.assign(mocks.rateLimits, {
+    [RATE_LIMIT_ATOMIC_UPDATE]: vi.fn(
+      async (config: Omit<RateLimitConfig, "message">) => {
+        const now = new Date();
+        const key = `${config.scope}:${config.key}`;
+        const existing = mocks.ipAttempts.get(key);
+        const activelyLocked =
+          (existing?.lockedUntil?.getTime() ?? 0) > now.getTime();
+        const startsNewWindow =
+          existing?.lockedUntil !== null ||
+          now.getTime() - (existing?.windowStart.getTime() ?? 0) >=
+            config.windowMs;
+        const count = activelyLocked
+          ? existing!.count
+          : startsNewWindow
+            ? 1
+            : existing.count + 1;
+        const lockedUntil = activelyLocked
+          ? existing!.lockedUntil
+          : count >= config.limit
+            ? new Date(now.getTime() + config.lockoutMs)
+            : null;
+        mocks.ipAttempts.set(key, {
+          scope: config.scope,
+          key: config.key,
+          count,
+          windowStart:
+            activelyLocked || !startsNewWindow
+              ? (existing?.windowStart ?? now)
+              : now,
+          lockedUntil,
+        });
+        return {
+          allowed: lockedUntil === null && count < config.limit,
+          count,
+          lockedUntil,
+        };
+      },
+    ),
+  });
   mocks.findUser.mockImplementation(
     async ({ where }: { where: { username: string } }) =>
       where.username === user.username ? user : null,
@@ -200,5 +297,34 @@ describe("credentials login rate limiting", () => {
       firstFailedAt: new Date("2026-07-15T12:00:00.000Z"),
       lockedUntil: null,
     });
+  });
+
+  it("blocks one source after failures across many usernames", async () => {
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      await expect(
+        authorize(`missing-${attempt}`, "wrong-password", "198.51.100.20"),
+      ).resolves.toBeNull();
+    }
+
+    mocks.findUser.mockClear();
+    await expect(
+      authorize("alice", "correct-password", "198.51.100.20"),
+    ).resolves.toBeNull();
+    expect(mocks.findUser).not.toHaveBeenCalled();
+
+    await expect(
+      authorize("alice", "correct-password", "198.51.100.21"),
+    ).resolves.toMatchObject({ id: user.id });
+  });
+
+  it("keeps source failures independent from an unrelated username", async () => {
+    for (let attempt = 0; attempt < 29; attempt += 1) {
+      await authorize(`other-${attempt}`, "wrong-password", "192.0.2.44");
+    }
+
+    expect(mocks.attempts.has("alice")).toBe(false);
+    await expect(
+      authorize("alice", "correct-password", "192.0.2.45"),
+    ).resolves.toMatchObject({ id: user.id });
   });
 });
