@@ -59,7 +59,9 @@ import {
 const user = {
   id: "user-1",
   username: "alice",
+  email: "alice@example.test",
   passwordHash: "stored-hash",
+  sessionVersion: 0,
   role: Role.USER,
   displayName: "Alice",
   banned: false,
@@ -326,5 +328,28 @@ describe("credentials login rate limiting", () => {
     await expect(
       authorize("alice", "correct-password", "192.0.2.45"),
     ).resolves.toMatchObject({ id: user.id });
+  });
+});
+
+describe("JWT session revocation", () => {
+  it("rejects an existing JWT after the user's session version changes", async () => {
+    mocks.findUser.mockResolvedValueOnce({
+      ...user,
+      sessionVersion: 1,
+    });
+    if (!authConfig.callbacks?.jwt) {
+      throw new Error("JWT callback is not configured");
+    }
+
+    const result = await authConfig.callbacks.jwt({
+      token: {
+        sub: user.id,
+        sessionVersion: 0,
+        authenticatedAt: Date.now() - 60_000,
+      },
+      user: undefined,
+    } as never);
+
+    expect(result).toBeNull();
   });
 });

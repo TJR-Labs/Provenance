@@ -81,6 +81,7 @@ function formOf(fields: Record<string, string>) {
 const validFields = {
   username: "Alice",
   displayName: "Alice",
+  email: "alice@example.test",
   password: "supersecret",
 };
 
@@ -106,6 +107,7 @@ describe("signup server action", () => {
     expect(mocks.signup).toHaveBeenCalledWith({
       username: "Alice",
       displayName: "Alice",
+      email: "alice@example.test",
       password: "supersecret",
     });
     // Reuses the credentials path with the returned (lowercased) username and
@@ -119,7 +121,9 @@ describe("signup server action", () => {
   });
 
   it("redirects to /signup?error and never signs in when signup fails validation", async () => {
-    mocks.signup.mockRejectedValue(new Error("That username is already in use."));
+    mocks.signup.mockRejectedValue(
+      new Error("That username is already in use."),
+    );
 
     const action = await getSignupAction();
     await expect(action(formOf(validFields))).rejects.toThrow(/^REDIRECT:/);

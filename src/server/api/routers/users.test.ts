@@ -8,6 +8,12 @@ vi.mock("~/server/auth/password", () => ({
       hash === `hashed:${password}`,
   ),
 }));
+vi.mock("~/server/password-recovery", async (importOriginal) => ({
+  ...(await importOriginal()),
+  requestEmailVerification: vi.fn().mockResolvedValue({
+    alreadyVerified: false,
+  }),
+}));
 
 import { appRouter } from "~/server/api/root";
 import { Role } from "../../../../generated/prisma";
@@ -130,6 +136,7 @@ function signupInput(username: string) {
   return {
     username,
     displayName: "New User",
+    email: `${username}@example.test`,
     password: "initial-password",
   };
 }

@@ -68,8 +68,11 @@ export default async function ReportsPage() {
                       )}
                     </p>
                     <p className="text-faint mt-1 font-mono text-xs break-words">
-                      Reported by @{report.reporter.username} ·{" "}
-                      {dateFormatter.format(report.createdAt)}
+                      Reported by{" "}
+                      {report.reporter
+                        ? `@${report.reporter.username}`
+                        : "a deleted user"}{" "}
+                      · {dateFormatter.format(report.createdAt)}
                     </p>
                     <p className="text-muted mt-4 break-words whitespace-pre-wrap">
                       {report.reason ?? "No reason supplied."}

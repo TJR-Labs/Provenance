@@ -34,6 +34,7 @@ import {
 
 declare module "next-auth" {
   interface Session extends DefaultSession {
+    authenticatedAt?: number;
     user: {
       id: string;
       role: Role;
@@ -62,6 +63,7 @@ function authUser(user: {
   email: string | null;
   role: Role;
   displayName: string;
+  sessionVersion: number;
 }) {
   return {
     id: user.id,
@@ -70,6 +72,7 @@ function authUser(user: {
     username: user.username,
     role: user.role,
     displayName: user.displayName,
+    sessionVersion: user.sessionVersion,
   };
 }
 
@@ -170,9 +173,11 @@ export const authConfig = {
         return {
           id: user.id,
           name: user.displayName,
+          email: user.email,
           username: user.username,
           role: user.role,
           displayName: user.displayName,
+          sessionVersion: user.sessionVersion,
         };
       },
     }),
@@ -297,9 +302,17 @@ export const authConfig = {
           username: true,
           email: true,
           banned: true,
+          sessionVersion: true,
         },
       });
       if (!currentUser || currentUser.banned) return null;
+      const tokenSessionVersion =
+        typeof token.sessionVersion === "number"
+          ? token.sessionVersion
+          : undefined;
+      if (!user && tokenSessionVersion !== currentUser.sessionVersion) {
+        return null;
+      }
 
       return {
         ...token,
@@ -309,12 +322,18 @@ export const authConfig = {
         role: currentUser.role,
         displayName: currentUser.displayName,
         username: currentUser.username,
+        sessionVersion: currentUser.sessionVersion,
+        authenticatedAt:
+          user || typeof token.authenticatedAt !== "number"
+            ? Date.now()
+            : token.authenticatedAt,
       };
     },
     session({ session, token }) {
       const displayName = token.displayName as string;
       const authenticatedSession: Session = {
         expires: session.expires,
+        authenticatedAt: token.authenticatedAt as number,
         user: {
           id: token.sub!,
           name: displayName,

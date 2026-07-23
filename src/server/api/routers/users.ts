@@ -7,6 +7,11 @@ import {
   protectedProcedure,
   publicProcedure,
 } from "~/server/api/trpc";
+import { DuplicateEmailError, emailSchema } from "~/server/account-email";
+import {
+  InvalidAccountDeletionReauthenticationError,
+  requestAccountDeletion,
+} from "~/server/account-deletion";
 import {
   ADMIN_PAGE_SIZE,
   createdAtIdCursorWhere,
@@ -15,6 +20,14 @@ import {
   pageSizeSchema,
 } from "~/server/pagination";
 import { consumeRateLimit, resolveClientIp } from "~/server/rate-limit";
+import {
+  confirmEmailVerification,
+  consumePasswordReset,
+  InvalidEmailVerificationTokenError,
+  InvalidPasswordResetTokenError,
+  requestEmailVerification,
+  requestPasswordReset,
+} from "~/server/password-recovery";
 import {
   banUser,
   beginOAuthLink,
@@ -39,6 +52,7 @@ import {
 const SIGNUP_RATE_LIMIT_SCOPE = "signup";
 const SIGNUP_RATE_LIMIT_THRESHOLD = 5;
 const SIGNUP_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+const EMAIL_VERIFICATION_RATE_LIMIT_SCOPE = "email-verification";
 
 export const usersRouter = createTRPCRouter({
   list: adminProcedure
@@ -85,10 +99,94 @@ export const usersRouter = createTRPCRouter({
       );
 
       try {
-        return await createUser(input, ctx.db.user);
+        const user = await createUser(input, ctx.db.user);
+        await requestEmailVerification(user.id, input.email, {
+          prisma: ctx.db,
+        });
+        return user;
       } catch (error) {
-        if (error instanceof DuplicateUsernameError) {
+        if (
+          error instanceof DuplicateUsernameError ||
+          error instanceof DuplicateEmailError
+        ) {
           throw new TRPCError({ code: "CONFLICT", message: error.message });
+        }
+        throw error;
+      }
+    }),
+
+  requestPasswordReset: publicProcedure
+    .input(z.object({ email: emailSchema }))
+    .mutation(({ ctx, input }) =>
+      requestPasswordReset(input.email, resolveClientIp(ctx.headers), {
+        prisma: ctx.db,
+        rateLimits: ctx.db.rateLimitAttempt,
+      }),
+    ),
+
+  consumePasswordReset: publicProcedure
+    .input(
+      z.object({
+        email: emailSchema,
+        token: z.string().min(1),
+        newPassword: z
+          .string()
+          .min(8, "New password must be at least 8 characters."),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        await consumePasswordReset(input, resolveClientIp(ctx.headers), {
+          prisma: ctx.db,
+          rateLimits: ctx.db.rateLimitAttempt,
+        });
+        return { success: true as const };
+      } catch (error) {
+        if (error instanceof InvalidPasswordResetTokenError) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: error.message });
+        }
+        throw error;
+      }
+    }),
+
+  requestEmailVerification: protectedProcedure
+    .input(z.object({ email: emailSchema }))
+    .mutation(async ({ ctx, input }) => {
+      await consumeRateLimit(
+        {
+          scope: EMAIL_VERIFICATION_RATE_LIMIT_SCOPE,
+          key: ctx.session.user.id,
+          limit: 5,
+          windowMs: SIGNUP_RATE_LIMIT_WINDOW_MS,
+          lockoutMs: SIGNUP_RATE_LIMIT_WINDOW_MS,
+          message:
+            "Too many verification emails requested. Please try again later.",
+        },
+        ctx.db.rateLimitAttempt,
+      );
+      try {
+        return await requestEmailVerification(
+          ctx.session.user.id,
+          input.email,
+          { prisma: ctx.db },
+        );
+      } catch (error) {
+        if (error instanceof DuplicateEmailError) {
+          throw new TRPCError({ code: "CONFLICT", message: error.message });
+        }
+        throw error;
+      }
+    }),
+
+  confirmEmailVerification: publicProcedure
+    .input(z.object({ token: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      try {
+        await confirmEmailVerification(input.token, ctx.db);
+        return { success: true as const };
+      } catch (error) {
+        if (error instanceof InvalidEmailVerificationTokenError) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: error.message });
         }
         throw error;
       }
@@ -205,6 +303,31 @@ export const usersRouter = createTRPCRouter({
         return { success: true as const };
       } catch (error) {
         if (error instanceof PasswordAlreadySetError) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: error.message });
+        }
+        throw error;
+      }
+    }),
+
+  requestAccountDeletion: protectedProcedure
+    .input(
+      z.object({
+        confirmation: z.literal("DELETE"),
+        currentPassword: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        return await requestAccountDeletion(
+          {
+            userId: ctx.session.user.id,
+            currentPassword: input.currentPassword,
+            authenticatedAt: ctx.session.authenticatedAt,
+          },
+          ctx.db,
+        );
+      } catch (error) {
+        if (error instanceof InvalidAccountDeletionReauthenticationError) {
           throw new TRPCError({ code: "BAD_REQUEST", message: error.message });
         }
         throw error;

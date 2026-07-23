@@ -18,6 +18,8 @@ function completeProductionEnv(): NodeJS.ProcessEnv {
     SUPABASE_SERVICE_ROLE_KEY: "fabricated-service-role-key",
     SUPABASE_STORAGE_BUCKET: "project-media",
     SUPABASE_STORAGE_STAGING_BUCKET: "upload-staging",
+    RESEND_API_KEY: "fabricated-resend-api-key",
+    EMAIL_FROM: "accounts@example.test",
     NODE_ENV: "production",
   };
 }
@@ -70,6 +72,16 @@ describe("production environment validation", () => {
         [variableName]: undefined,
       }),
     ).toThrow(variableName);
+  });
+
+  it("accepts production without RESEND_API_KEY or EMAIL_FROM", () => {
+    expect(() =>
+      createAppEnv({
+        ...completeProductionEnv(),
+        RESEND_API_KEY: undefined,
+        EMAIL_FROM: undefined,
+      }),
+    ).not.toThrow();
   });
 
   it("rejects every incomplete OAuth pair in every environment", () => {

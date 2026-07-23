@@ -84,6 +84,8 @@ export function createAppEnv(source = process.env) {
     SUPABASE_SERVICE_ROLE_KEY: source.SUPABASE_SERVICE_ROLE_KEY,
     SUPABASE_STORAGE_BUCKET: source.SUPABASE_STORAGE_BUCKET,
     SUPABASE_STORAGE_STAGING_BUCKET: source.SUPABASE_STORAGE_STAGING_BUCKET,
+    RESEND_API_KEY: source.RESEND_API_KEY,
+    EMAIL_FROM: source.EMAIL_FROM,
     NODE_ENV: source.NODE_ENV,
   };
   const skipValidation = !!source.SKIP_ENV_VALIDATION;
@@ -122,6 +124,12 @@ export function createAppEnv(source = process.env) {
       SUPABASE_STORAGE_STAGING_BUCKET: isProduction
         ? z.string().min(1)
         : z.string().min(1).default("upload-staging"),
+      // Optional in every environment, including production: transactional
+      // email is not yet configured (no verified sending domain). The
+      // application must remain fully deployable without it; account-email
+      // delivery no-ops when either value is unset (src/server/email.ts).
+      RESEND_API_KEY: z.string().min(1).optional(),
+      EMAIL_FROM: z.string().min(1).optional(),
       NODE_ENV: z
         .enum(["development", "test", "production"])
         .default("development"),

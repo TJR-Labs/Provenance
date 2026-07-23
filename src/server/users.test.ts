@@ -12,6 +12,7 @@ vi.mock("~/server/auth/password", () => ({
       hash === `hashed:${password}`,
   ),
 }));
+vi.mock("~/server/db", () => ({ db: {} }));
 
 import { hashPassword } from "~/server/auth/password";
 import {
@@ -127,6 +128,7 @@ describe("user accounts", () => {
         {
           username: "ALICE",
           displayName: "Another Alice",
+          email: "alice@example.test",
           password: "initial-password",
         },
         users as never,
@@ -144,6 +146,7 @@ describe("user accounts", () => {
     const result = createUserInputSchema.safeParse({
       username: "not a route",
       displayName: "New User",
+      email: "new@example.test",
       password: "initial-password",
     });
 
@@ -155,6 +158,7 @@ describe("user accounts", () => {
       createUserInputSchema.safeParse({
         username: "projects",
         displayName: "Projects User",
+        email: "projects@example.test",
         password: "initial-password",
       }).success,
     ).toBe(false);

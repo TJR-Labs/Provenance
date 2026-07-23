@@ -15,7 +15,7 @@ npx prisma db seed
 npm run dev
 ```
 
-Configure the database and Supabase Storage values documented in `.env.example`. In the Supabase dashboard, manually create the public Storage bucket named by `SUPABASE_STORAGE_BUCKET` and the private bucket named by `SUPABASE_STORAGE_STAGING_BUCKET`. The private staging bucket must not be made public. The service-role key is server-only and must never be exposed to the browser.
+Configure the database, Supabase Storage, and transactional-email values documented in `.env.example`. In the Supabase dashboard, manually create the public Storage bucket named by `SUPABASE_STORAGE_BUCKET` and the private bucket named by `SUPABASE_STORAGE_STAGING_BUCKET`. The private staging bucket must not be made public. The service-role key is server-only and must never be exposed to the browser.
 
 Uploads use a two-phase flow: the application creates a 10-minute, user-bound intent; the browser uploads the file body directly to the private staging bucket using a signed URL; and the server downloads, size-checks, magic-byte-validates, and finalizes the object into the public bucket. The browser never sends supported image or video file bytes to a Vercel Function. Images up to 10 MB and videos up to 50 MB use this same direct upload path.
 
@@ -53,11 +53,11 @@ In the Vercel project settings, scope `DATABASE_URL`, `DIRECT_URL`, Supabase Sto
 
 Configure environment values by Vercel scope:
 
-| Scope       | Configuration                                                                                                                                                                                                                                                  |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Development | Use local or development-only `DATABASE_URL`, `DIRECT_URL`, Supabase project/buckets, and `AUTH_SECRET`. OAuth is optional, but each configured provider requires both its client ID and client secret.                                                        |
-| Preview     | Use preview-only database URLs, Supabase project/buckets, `AUTH_SECRET`, and OAuth applications. Preview database, Storage, and OAuth resources must be isolated from Production.                                                                              |
-| Production  | Set dedicated production `AUTH_SECRET`, `DATABASE_URL`, `DIRECT_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_STORAGE_BUCKET`, and `SUPABASE_STORAGE_STAGING_BUCKET`. Set both values for each enabled OAuth provider; omit both to disable it. |
+| Scope       | Configuration                                                                                                                                                                                                                                                                                                 |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Development | Use local or development-only `DATABASE_URL`, `DIRECT_URL`, Supabase project/buckets, and `AUTH_SECRET`. OAuth is optional, but each configured provider requires both its client ID and client secret. `RESEND_API_KEY` and `EMAIL_FROM` are optional; with either unset, account-email delivery is skipped. |
+| Preview     | Use preview-only database URLs, Supabase project/buckets, `AUTH_SECRET`, and OAuth applications. Preview database, Storage, and OAuth resources must be isolated from Production. Use a Resend test domain/key or leave email unset when delivery is not under test.                                          |
+| Production  | Set dedicated production `AUTH_SECRET`, `DATABASE_URL`, `DIRECT_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_STORAGE_BUCKET`, and `SUPABASE_STORAGE_STAGING_BUCKET`. Set both values for each enabled OAuth provider; omit both to disable it. `RESEND_API_KEY` and `EMAIL_FROM` are optional in production too — leave both unset until a sending domain is available; the app deploys and runs normally, it just skips sending password-reset and email-verification messages until they're set.                |
 
 Never copy Production database, Supabase service-role, Storage, OAuth, or backup credentials into Development or Preview scopes.
 
@@ -91,13 +91,31 @@ This writes a timestamped, gzip-compressed `pg_dump` of `DIRECT_URL` to `./backu
 
 ### Security and OAuth cleanup
 
-Remove stale rate-limit/login-attempt rows and expired OAuth signup/link intents with:
+Remove stale rate-limit/login-attempt rows, expired OAuth signup/link intents, expired password-reset/email-verification tokens, and anonymized moderation reports past retention with:
 
 ```powershell
 npm run cleanup:rate-limits
 ```
 
 Schedule this command at least daily (hourly is also safe). Limiter rows remain eligible for enforcement throughout their active window or lockout and are retained for a full day of inactivity before deletion. The command prints only aggregate deletion counts; keep that output in scheduler logs to verify the last successful run.
+
+### Transactional email and password recovery
+
+Credentials signup requires a unique email address. The account can be used immediately, but password recovery remains unavailable until the address is verified. Existing credentials users with no verified address can add one from `/account`; changing the address marks the new value unverified until its link is confirmed.
+
+Production email is sent through the official `resend` npm package. `RESEND_API_KEY` and `EMAIL_FROM` are currently unset in every environment, including production, because there is no verified sending domain yet; the app deploys and runs fully without them, and delivery silently no-ops until both are set, so password-reset and email-verification links are not actually sent yet. Set `RESEND_API_KEY` to a server-only Resend API key and set `EMAIL_FROM` to a sender on a Resend-verified domain, for example `Provenance <accounts@example.com>`, once a domain is chosen. Links use `AUTH_URL` when it is configured, then Vercel's deployment URL, and finally `http://localhost:3000` in local development. Unit tests inject an email sender and never call the network.
+
+Resend was chosen over direct SMTP because it supplies a small official SDK, managed delivery, domain authentication, suppression handling, and provider diagnostics without operating an SMTP transport. Supabase Auth email was not selected because credentials and sessions are owned by the existing NextAuth/custom `User` model; adopting Supabase Auth only for email would introduce a second identity store and a migration/synchronization boundary. As checked in July 2026, Resend's Free plan is $0 for 3,000 emails per month with a 100-email daily limit, and Pro starts at $20 per month for 50,000 emails; confirm current pricing before launch at https://resend.com/pricing?product=transactional.
+
+Password-reset requests always return the same message whether an account exists. Request and consumption attempts are atomically limited by both a SHA-256 email key and the trusted Vercel source address. Only credentials accounts with a verified email receive a link. Reset and verification tokens come from `crypto.randomBytes`, only their SHA-256 hashes are stored, reset tokens expire after one hour, and successful consumption is single-use. The reset page sets a `no-referrer` policy and submits the token only through a same-origin POST; application code never logs the token. A successful reset increments `User.sessionVersion`, and the NextAuth JWT callback rejects every older JWT on its next use. JWTs issued before the version field was deployed have no version and are intentionally rejected once, requiring those users to sign in again.
+
+### Account and personal-data deletion
+
+The `/account` deletion form requires the current password when the account has credentials. OAuth-only accounts must sign in again with a connected provider; that fresh authentication is accepted for ten minutes. After deletion, the action signs out and the JWT callback also rejects the session because the user no longer exists.
+
+The deletion transaction queues every known owned public and staging Storage path in `PendingStorageDeletion`, then removes the user. Project ownership cascades through project media, Grid layouts/blocks, Canvas elements, image resources, OAuth accounts/link intents, upload intents, password/email tokens, and related profile data. Login attempts, user-keyed rate limits, email-keyed reset limits, and matching pending OAuth signup data are explicitly removed. Existing P1 database triggers provide a second idempotent outbox guard when owned media or upload-ledger rows cascade. `npm run storage:reconcile` retries the external Storage work; a Storage outage therefore does not falsely complete or lose the cleanup request.
+
+Moderation retention is explicit: reports against the deleted user and reports attached to that user's deleted projects are removed with the target content. Reports the user made about other content are retained with `reporterId = null`, so no deleted profile identity remains. Those anonymized reports are retained for 24 months (implemented as 730 days) and then removed by `npm run cleanup:rate-limits`. `AccountDeletionAudit` keeps only a one-way SHA-256 subject marker, request time, and queued-object count for idempotency/auditability; it stores no username, email, profile content, password, token, or Storage path.
 
 ### Grid layout migration
 

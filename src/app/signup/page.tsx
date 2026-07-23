@@ -28,6 +28,7 @@ export default async function SignupPage({ searchParams }: SignupPageProps) {
       ).users.signup({
         username: value("username"),
         displayName: value("displayName"),
+        email: value("email"),
         password,
       });
       username = user.username;
@@ -99,6 +100,20 @@ export default async function SignupPage({ searchParams }: SignupPageProps) {
               autoComplete="name"
               className="border-line-strong bg-canvas text-ink focus:border-accent mt-2 block w-full rounded-md border px-3 py-2"
             />
+          </label>
+          <label className="text-ink block text-sm font-medium">
+            Email
+            <input
+              name="email"
+              type="email"
+              required
+              maxLength={320}
+              autoComplete="email"
+              className="border-line-strong bg-canvas text-ink focus:border-accent mt-2 block w-full rounded-md border px-3 py-2"
+            />
+            <span className="text-muted mt-1 block text-xs">
+              We’ll send a verification link for password recovery.
+            </span>
           </label>
           <PasswordField />
           <button className="bg-accent text-on-accent hover:bg-accent-strong w-full rounded-md px-4 py-2 font-semibold transition-colors">
