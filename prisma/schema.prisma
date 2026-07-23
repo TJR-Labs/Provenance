@@ -164,6 +164,17 @@ model AccountDeletionAudit {
   @@index([requestedAt])
 }
 
+model AdminActionAudit {
+  id           String   @id @default(cuid())
+  actorId      String
+  targetUserId String
+  action       String
+  createdAt    DateTime @default(now())
+
+  @@index([targetUserId, createdAt])
+  @@index([actorId, createdAt])
+}
+
 model Account {
   id                String @id @default(cuid())
   userId            String

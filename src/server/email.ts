@@ -13,6 +13,13 @@ export type EmailSender = {
   send(message: TransactionalEmail): Promise<void>;
 };
 
+export class EmailSendFailedError extends Error {
+  constructor(message = "Transactional email delivery failed.") {
+    super(message);
+    this.name = "EmailSendFailedError";
+  }
+}
+
 function applicationOrigin() {
   const configuredOrigin =
     process.env.AUTH_URL ??
@@ -31,10 +38,10 @@ export function applicationUrl(path: string) {
 
 export const applicationEmailSender: EmailSender = {
   async send(message) {
-    if (!env.RESEND_API_KEY || !env.EMAIL_FROM) return;
+    if (!env.RESEND_API_KEY || !env.EMAIL_FROM) {
+      throw new EmailSendFailedError("Email provider is not configured.");
+    }
 
-    // Tests and local development with no email configuration return before
-    // initializing a provider client or making a network request.
     const result = await new Resend(env.RESEND_API_KEY).emails.send({
       from: env.EMAIL_FROM,
       to: message.to,
@@ -43,7 +50,7 @@ export const applicationEmailSender: EmailSender = {
       html: message.html,
     });
     if (result.error) {
-      throw new Error("Transactional email delivery failed.");
+      throw new EmailSendFailedError();
     }
   },
 };

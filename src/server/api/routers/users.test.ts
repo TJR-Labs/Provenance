@@ -8,15 +8,19 @@ vi.mock("~/server/auth/password", () => ({
       hash === `hashed:${password}`,
   ),
 }));
-vi.mock("~/server/password-recovery", async (importOriginal) => ({
-  ...(await importOriginal()),
+const mocks = vi.hoisted(() => ({
   requestEmailVerification: vi.fn().mockResolvedValue({
     alreadyVerified: false,
   }),
 }));
+vi.mock("~/server/password-recovery", async (importOriginal) => ({
+  ...(await importOriginal()),
+  requestEmailVerification: mocks.requestEmailVerification,
+}));
 
 import { appRouter } from "~/server/api/root";
 import { Role } from "../../../../generated/prisma";
+import { EmailDeliveryError } from "~/server/password-recovery";
 import {
   RATE_LIMIT_ATOMIC_UPDATE,
   type RateLimitConfig,
@@ -206,6 +210,21 @@ describe("users.signup rate limiting", () => {
       caller.users.signup(signupInput("no-ip-user")),
     ).resolves.toMatchObject({ username: "no-ip-user" });
   });
+
+  it("still creates the account and surfaces emailSent:false when email delivery fails", async () => {
+    const rateLimits = fakeRateLimits();
+    const caller = callerFromIp("203.0.113.11", rateLimits);
+    mocks.requestEmailVerification.mockRejectedValueOnce(
+      new EmailDeliveryError(),
+    );
+
+    await expect(
+      caller.users.signup(signupInput("email-down-user")),
+    ).resolves.toMatchObject({
+      username: "email-down-user",
+      emailSent: false,
+    });
+  });
 });
 
 function adminSession() {
@@ -298,5 +317,141 @@ describe("users.list pagination", () => {
       caller.users.list({ cursor: "malformed" }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     expect(findMany).not.toHaveBeenCalled();
+  });
+});
+
+function adminDb(userRow: { id: string; emailVerified: Date | null } | null) {
+  let user = userRow ? { ...userRow } : null;
+  const passwordResetToken = {
+    deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+    create: vi.fn().mockResolvedValue({}),
+  };
+  const transaction = { passwordResetToken };
+  return {
+    user: {
+      findUnique: vi.fn(async () => (user ? { ...user } : null)),
+      update: vi.fn(async ({ data }: { data: { emailVerified?: Date } }) => {
+        if (!user) throw new Error("missing user");
+        user = { ...user, ...data };
+        return { ...user };
+      }),
+    },
+    adminActionAudit: { create: vi.fn().mockResolvedValue({}) },
+    passwordResetToken,
+    $transaction: vi.fn(
+      async (operation: (tx: typeof transaction) => Promise<unknown>) =>
+        operation(transaction),
+    ),
+  };
+}
+
+describe("users.verifyEmail", () => {
+  it("marks an unverified target user's email as verified and audit-logs the action", async () => {
+    const db = adminDb({ id: "user-1", emailVerified: null });
+    const caller = appRouter.createCaller({
+      db: db as never,
+      headers: new Headers(),
+      session: adminSession(),
+    });
+
+    await expect(
+      caller.users.verifyEmail({ userId: "user-1" }),
+    ).resolves.toEqual({ success: true });
+    expect(db.user.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "user-1" } }),
+    );
+    expect(db.adminActionAudit.create).toHaveBeenCalledWith({
+      data: {
+        actorId: "admin-1",
+        targetUserId: "user-1",
+        action: "verifyEmail",
+      },
+    });
+  });
+
+  it("succeeds as a no-op when the target user is already verified", async () => {
+    const db = adminDb({ id: "user-1", emailVerified: new Date() });
+    const caller = appRouter.createCaller({
+      db: db as never,
+      headers: new Headers(),
+      session: adminSession(),
+    });
+
+    await expect(
+      caller.users.verifyEmail({ userId: "user-1" }),
+    ).resolves.toEqual({ success: true });
+    expect(db.user.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects a nonexistent target user with NOT_FOUND", async () => {
+    const db = adminDb(null);
+    const caller = appRouter.createCaller({
+      db: db as never,
+      headers: new Headers(),
+      session: adminSession(),
+    });
+
+    await expect(
+      caller.users.verifyEmail({ userId: "missing" }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("rejects a non-admin caller with FORBIDDEN", async () => {
+    const db = adminDb({ id: "user-1", emailVerified: null });
+    const caller = appRouter.createCaller({
+      db: db as never,
+      headers: new Headers(),
+      session: {
+        expires: new Date(Date.now() + 60_000).toISOString(),
+        user: {
+          id: "user-2",
+          role: Role.USER,
+          displayName: "Regular",
+          username: "regular",
+          name: "Regular",
+        },
+      },
+    });
+
+    await expect(
+      caller.users.verifyEmail({ userId: "user-1" }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+});
+
+describe("users.forcePasswordReset", () => {
+  it("generates a reset token for the target user and audit-logs the action", async () => {
+    const db = adminDb({ id: "user-1", emailVerified: new Date() });
+    const caller = appRouter.createCaller({
+      db: db as never,
+      headers: new Headers(),
+      session: adminSession(),
+    });
+
+    const result = await caller.users.forcePasswordReset({
+      userId: "user-1",
+    });
+    expect(result).toMatchObject({ emailSent: false });
+    expect(db.passwordResetToken.create).toHaveBeenCalled();
+    expect(db.adminActionAudit.create).toHaveBeenCalledWith({
+      data: {
+        actorId: "admin-1",
+        targetUserId: "user-1",
+        action: "forcePasswordReset",
+      },
+    });
+  });
+
+  it("rejects a nonexistent target user with NOT_FOUND", async () => {
+    const db = adminDb(null);
+    const caller = appRouter.createCaller({
+      db: db as never,
+      headers: new Headers(),
+      session: adminSession(),
+    });
+
+    await expect(
+      caller.users.forcePasswordReset({ userId: "missing" }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 });

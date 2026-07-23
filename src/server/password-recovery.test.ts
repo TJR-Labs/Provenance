@@ -9,6 +9,7 @@ vi.mock("~/server/auth/password", () => ({
 import type { EmailSender, TransactionalEmail } from "~/server/email";
 import {
   EMAIL_VERIFICATION_TTL_MS,
+  EmailDeliveryError,
   InvalidEmailVerificationTokenError,
   InvalidPasswordResetTokenError,
   PASSWORD_RESET_REQUEST_RESPONSE,
@@ -275,6 +276,10 @@ function fakeDatabase(initialUser: UserRow | null) {
   };
 }
 
+function failingSender(): EmailSender {
+  return { send: vi.fn(async () => Promise.reject(new Error("provider down"))) };
+}
+
 function capturingSender() {
   const messages: TransactionalEmail[] = [];
   const sender: EmailSender = {
@@ -425,6 +430,31 @@ describe("password recovery", () => {
     ).rejects.toBeInstanceOf(InvalidPasswordResetTokenError);
   });
 
+  it("throws EmailDeliveryError instead of resolving when the send fails", async () => {
+    const database = fakeDatabase(verifiedUser);
+
+    await expect(
+      requestPasswordReset(verifiedUser.email, "203.0.113.6", {
+        prisma: database.prisma as never,
+        rateLimits: database.prisma.rateLimitAttempt as never,
+        sender: failingSender(),
+      }),
+    ).rejects.toBeInstanceOf(EmailDeliveryError);
+  });
+
+  it("throws EmailDeliveryError when RESEND_API_KEY/EMAIL_FROM are unconfigured, without a sender override", async () => {
+    // `~/env` is mocked to `{}` at the top of this file, so the default
+    // applicationEmailSender sees both keys as unset.
+    const database = fakeDatabase(verifiedUser);
+
+    await expect(
+      requestPasswordReset(verifiedUser.email, "203.0.113.7", {
+        prisma: database.prisma as never,
+        rateLimits: database.prisma.rateLimitAttempt as never,
+      }),
+    ).rejects.toBeInstanceOf(EmailDeliveryError);
+  });
+
   it("atomically rate-limits reset requests by email and source IP", async () => {
     const database = fakeDatabase(null);
     for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -521,5 +551,16 @@ describe("email verification", () => {
         new Date(now.getTime() + 2_000),
       ),
     ).rejects.toBeInstanceOf(InvalidEmailVerificationTokenError);
+  });
+
+  it("throws EmailDeliveryError instead of resolving when the send fails", async () => {
+    const database = fakeDatabase({ ...verifiedUser, emailVerified: null });
+
+    await expect(
+      requestEmailVerification(verifiedUser.id, verifiedUser.email, {
+        prisma: database.prisma as never,
+        sender: failingSender(),
+      }),
+    ).rejects.toBeInstanceOf(EmailDeliveryError);
   });
 });

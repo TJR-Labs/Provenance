@@ -22,6 +22,7 @@ export default async function SignupPage({ searchParams }: SignupPageProps) {
     };
     const password = value("password");
     let username: string;
+    let emailSent = true;
     try {
       const user = await (
         await getServerCaller()
@@ -32,6 +33,7 @@ export default async function SignupPage({ searchParams }: SignupPageProps) {
         password,
       });
       username = user.username;
+      emailSent = user.emailSent !== false;
     } catch (caught) {
       const message =
         caught instanceof Error && caught.message.includes("already in use")
@@ -40,6 +42,10 @@ export default async function SignupPage({ searchParams }: SignupPageProps) {
             ? caught.message
             : "Unable to create your account.";
       redirect(`/signup?error=${encodeURIComponent(message)}`);
+    }
+
+    if (!emailSent) {
+      redirect("/login?created=1&emailFailed=1");
     }
 
     let signInFailed = false;

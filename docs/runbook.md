@@ -87,6 +87,16 @@ Every incident is acknowledged by `<on-call owner>` in `<incident notification c
 
 ## Backup and recovery
 
+> ⚠️ **Prerequisite — required before onboarding real users:** this project
+> currently runs on Supabase's free tier, which has no automatic backups or
+> point-in-time recovery (PITR). Before any real (non-test) user data is
+> stored, upgrade the Supabase project to at least the **Pro plan** (includes
+> 7 days of daily backups) and add the **Point-in-Time Recovery add-on** if a
+> sub-24-hour recovery point is required. See Supabase's backup documentation:
+> <https://supabase.com/docs/guides/platform/backups>. Until this upgrade
+> happens, the manual `npm run backup:database` process below is the *only*
+> safety net, and it is not a substitute for provider-managed PITR.
+
 ### Database (Postgres)
 
 This project runs on **Supabase's free tier**, which does **not** include automatic daily backups or point-in-time recovery. There is no built-in RPO/RTO to rely on — backups only exist if this project schedules and runs them itself.

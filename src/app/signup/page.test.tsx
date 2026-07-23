@@ -135,6 +135,22 @@ describe("signup server action", () => {
     );
   });
 
+  it("redirects to /login with emailFailed when the account is created but the verification email fails", async () => {
+    mocks.signup.mockResolvedValue({
+      id: "user-1",
+      username: "alice",
+      displayName: "Alice",
+      emailSent: false,
+    });
+
+    const action = await getSignupAction();
+    await expect(action(formOf(validFields))).rejects.toThrow(
+      "REDIRECT:/login?created=1&emailFailed=1",
+    );
+
+    expect(mocks.signIn).not.toHaveBeenCalled();
+  });
+
   it("falls back to /login?created=1 when the post-signup sign-in throws AuthError", async () => {
     mocks.signup.mockResolvedValue({
       id: "user-1",

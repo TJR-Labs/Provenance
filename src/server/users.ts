@@ -809,3 +809,31 @@ export async function banUser(userId: string, users: UserDelegate = db.user) {
     select: { id: true, username: true, banned: true },
   });
 }
+
+type AdminActionAuditDelegate = Pick<PrismaClient["adminActionAudit"], "create">;
+
+export async function logAdminAction(
+  actorId: string,
+  targetUserId: string,
+  action: string,
+  auditLog: AdminActionAuditDelegate = db.adminActionAudit,
+) {
+  await auditLog.create({ data: { actorId, targetUserId, action } });
+}
+
+export async function adminVerifyEmail(
+  userId: string,
+  users: UserDelegate = db.user,
+) {
+  const user = await users.findUnique({
+    where: { id: userId },
+    select: { id: true, emailVerified: true },
+  });
+  if (!user) return null;
+  if (user.emailVerified) return { id: user.id, emailVerified: true as const };
+  await users.update({
+    where: { id: userId },
+    data: { emailVerified: new Date() },
+  });
+  return { id: user.id, emailVerified: true as const };
+}

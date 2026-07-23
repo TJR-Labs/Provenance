@@ -10,6 +10,7 @@ type LoginPageProps = {
   searchParams: Promise<{
     error?: string;
     created?: string;
+    emailFailed?: string;
     reset?: string;
     returnTo?: string;
   }>;
@@ -58,6 +59,15 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         {params.created ? (
           <p className="border-success-line bg-success-surface text-success mt-6 rounded-md border px-4 py-3 text-sm">
             Account created. You can log in now.
+          </p>
+        ) : null}
+        {params.emailFailed ? (
+          <p
+            role="alert"
+            className="border-danger-line bg-danger-surface text-danger mt-6 rounded-md border px-4 py-3 text-sm"
+          >
+            Your account was created, but we couldn&apos;t send a
+            verification email.
           </p>
         ) : null}
         {params.reset ? (

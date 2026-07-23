@@ -51,6 +51,13 @@ export class InvalidEmailVerificationTokenError extends Error {
   }
 }
 
+export class EmailDeliveryError extends Error {
+  constructor() {
+    super("Email delivery failed.");
+    this.name = "EmailDeliveryError";
+  }
+}
+
 function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
@@ -91,13 +98,14 @@ async function recordBoundedAttempt(
   return keys;
 }
 
-async function deliverWithoutLeakingAccountState(deliver: () => Promise<void>) {
+async function deliverOrThrow(deliver: () => Promise<void>) {
   try {
     await deliver();
   } catch {
     // This message intentionally contains no address, token, user id, or
-    // provider response. Delivery is retryable by issuing another token.
+    // provider response. The token is still valid and delivery is retryable.
     console.error("Transactional account email delivery failed.");
+    throw new EmailDeliveryError();
   }
 }
 
@@ -150,7 +158,7 @@ export async function requestPasswordReset(
     });
   });
 
-  await deliverWithoutLeakingAccountState(() =>
+  await deliverOrThrow(() =>
     sendPasswordResetEmail(
       user.email!,
       token,
@@ -297,7 +305,7 @@ export async function requestEmailVerification(
     });
 
     if (!result.alreadyVerified) {
-      await deliverWithoutLeakingAccountState(() =>
+      await deliverOrThrow(() =>
         sendEmailVerificationEmail(
           email,
           token,
@@ -309,7 +317,8 @@ export async function requestEmailVerification(
   } catch (error) {
     if (
       error instanceof DuplicateEmailError ||
-      error instanceof InvalidEmailVerificationTokenError
+      error instanceof InvalidEmailVerificationTokenError ||
+      error instanceof EmailDeliveryError
     ) {
       throw error;
     }
@@ -323,6 +332,59 @@ export async function requestEmailVerification(
     }
     throw error;
   }
+}
+
+export async function adminForcePasswordReset(
+  userId: string,
+  dependencies: {
+    prisma?: PrismaClient;
+    sender?: EmailSender;
+    now?: () => Date;
+  } = {},
+) {
+  const prisma = dependencies.prisma ?? db;
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, email: true },
+  });
+  if (!user) return null;
+
+  const now = dependencies.now?.() ?? new Date();
+  const token = createToken();
+  await prisma.$transaction(async (transaction) => {
+    await transaction.passwordResetToken.deleteMany({
+      where: { userId: user.id, consumedAt: null },
+    });
+    await transaction.passwordResetToken.create({
+      data: {
+        tokenHash: hashToken(token),
+        userId: user.id,
+        expiresAt: new Date(now.getTime() + PASSWORD_RESET_TTL_MS),
+      },
+    });
+  });
+
+  let emailSent = false;
+  if (user.email) {
+    try {
+      await sendPasswordResetEmail(
+        user.email,
+        token,
+        dependencies.sender ?? applicationEmailSender,
+      );
+      emailSent = true;
+    } catch {
+      // Support can still relay the token out-of-band via the logged line
+      // below when the provider is down.
+    }
+  }
+  if (!emailSent) {
+    console.info("Admin-issued password reset token for out-of-band relay.", {
+      userId: user.id,
+      token,
+    });
+  }
+  return { emailSent };
 }
 
 export async function confirmEmailVerification(

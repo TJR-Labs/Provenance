@@ -21,14 +21,17 @@ import {
 } from "~/server/pagination";
 import { consumeRateLimit, resolveClientIp } from "~/server/rate-limit";
 import {
+  adminForcePasswordReset,
   confirmEmailVerification,
   consumePasswordReset,
+  EmailDeliveryError,
   InvalidEmailVerificationTokenError,
   InvalidPasswordResetTokenError,
   requestEmailVerification,
   requestPasswordReset,
 } from "~/server/password-recovery";
 import {
+  adminVerifyEmail,
   banUser,
   beginOAuthLink,
   changePassword,
@@ -41,6 +44,7 @@ import {
   InvalidCurrentPasswordError,
   InvalidOAuthFlowError,
   LastSignInMethodError,
+  logAdminAction,
   OAuthAccountAlreadyLinkedError,
   OAuthProviderAlreadyLinkedError,
   oauthProviderSchema,
@@ -48,6 +52,9 @@ import {
   setPassword,
   unlinkOAuthAccount,
 } from "~/server/users";
+
+const EMAIL_DELIVERY_ERROR_MESSAGE =
+  "We couldn't send that email right now — try again shortly or contact support.";
 
 const SIGNUP_RATE_LIMIT_SCOPE = "signup";
 const SIGNUP_RATE_LIMIT_THRESHOLD = 5;
@@ -98,12 +105,9 @@ export const usersRouter = createTRPCRouter({
         ctx.db.rateLimitAttempt,
       );
 
+      let user;
       try {
-        const user = await createUser(input, ctx.db.user);
-        await requestEmailVerification(user.id, input.email, {
-          prisma: ctx.db,
-        });
-        return user;
+        user = await createUser(input, ctx.db.user);
       } catch (error) {
         if (
           error instanceof DuplicateUsernameError ||
@@ -113,16 +117,38 @@ export const usersRouter = createTRPCRouter({
         }
         throw error;
       }
+
+      let emailSent = true;
+      try {
+        await requestEmailVerification(user.id, input.email, {
+          prisma: ctx.db,
+        });
+      } catch (error) {
+        if (!(error instanceof EmailDeliveryError)) throw error;
+        emailSent = false;
+      }
+      return { ...user, emailSent };
     }),
 
   requestPasswordReset: publicProcedure
     .input(z.object({ email: emailSchema }))
-    .mutation(({ ctx, input }) =>
-      requestPasswordReset(input.email, resolveClientIp(ctx.headers), {
-        prisma: ctx.db,
-        rateLimits: ctx.db.rateLimitAttempt,
-      }),
-    ),
+    .mutation(async ({ ctx, input }) => {
+      try {
+        return await requestPasswordReset(
+          input.email,
+          resolveClientIp(ctx.headers),
+          { prisma: ctx.db, rateLimits: ctx.db.rateLimitAttempt },
+        );
+      } catch (error) {
+        if (error instanceof EmailDeliveryError) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: EMAIL_DELIVERY_ERROR_MESSAGE,
+          });
+        }
+        throw error;
+      }
+    }),
 
   consumePasswordReset: publicProcedure
     .input(
@@ -173,6 +199,12 @@ export const usersRouter = createTRPCRouter({
       } catch (error) {
         if (error instanceof DuplicateEmailError) {
           throw new TRPCError({ code: "CONFLICT", message: error.message });
+        }
+        if (error instanceof EmailDeliveryError) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: EMAIL_DELIVERY_ERROR_MESSAGE,
+          });
         }
         throw error;
       }
@@ -233,6 +265,40 @@ export const usersRouter = createTRPCRouter({
       }
       await banUser(input.userId, ctx.db.user);
       return { success: true as const };
+    }),
+
+  verifyEmail: adminProcedure
+    .input(z.object({ userId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const result = await adminVerifyEmail(input.userId, ctx.db.user);
+      if (!result) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "User not found." });
+      }
+      await logAdminAction(
+        ctx.session.user.id,
+        input.userId,
+        "verifyEmail",
+        ctx.db.adminActionAudit,
+      );
+      return { success: true as const };
+    }),
+
+  forcePasswordReset: adminProcedure
+    .input(z.object({ userId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const result = await adminForcePasswordReset(input.userId, {
+        prisma: ctx.db,
+      });
+      if (!result) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "User not found." });
+      }
+      await logAdminAction(
+        ctx.session.user.id,
+        input.userId,
+        "forcePasswordReset",
+        ctx.db.adminActionAudit,
+      );
+      return result;
     }),
 
   changePassword: protectedProcedure
