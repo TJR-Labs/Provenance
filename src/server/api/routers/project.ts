@@ -23,6 +23,13 @@ import {
   projectInputSchema,
   updateProject,
 } from "~/server/projects";
+import { consumeRateLimit } from "~/server/rate-limit";
+
+const CREATE_PROJECT_RATE_LIMIT_SCOPE = "project.create";
+const UPDATE_PROJECT_RATE_LIMIT_SCOPE = "project.update";
+const DELETE_PROJECT_RATE_LIMIT_SCOPE = "project.delete";
+const PROJECT_MUTATION_RATE_LIMIT_THRESHOLD = 60;
+const PROJECT_MUTATION_RATE_LIMIT_WINDOW_MS = 60_000;
 
 function projectError(error: unknown): never {
   if (error instanceof ProjectMediaUnavailableError) {
@@ -40,13 +47,33 @@ function projectError(error: unknown): never {
 export const projectRouter = createTRPCRouter({
   create: protectedProcedure
     .input(projectInputSchema)
-    .mutation(({ ctx, input }) =>
-      createProject(ctx.session.user.id, input, ctx.db),
-    ),
+    .mutation(async ({ ctx, input }) => {
+      await consumeRateLimit(
+        {
+          scope: CREATE_PROJECT_RATE_LIMIT_SCOPE,
+          key: ctx.session.user.id,
+          limit: PROJECT_MUTATION_RATE_LIMIT_THRESHOLD,
+          windowMs: PROJECT_MUTATION_RATE_LIMIT_WINDOW_MS,
+          lockoutMs: PROJECT_MUTATION_RATE_LIMIT_WINDOW_MS,
+        },
+        ctx.db.rateLimitAttempt,
+      );
+      return createProject(ctx.session.user.id, input, ctx.db);
+    }),
 
   update: protectedProcedure
     .input(z.object({ id: z.string().min(1), project: projectInputSchema }))
     .mutation(async ({ ctx, input }) => {
+      await consumeRateLimit(
+        {
+          scope: UPDATE_PROJECT_RATE_LIMIT_SCOPE,
+          key: ctx.session.user.id,
+          limit: PROJECT_MUTATION_RATE_LIMIT_THRESHOLD,
+          windowMs: PROJECT_MUTATION_RATE_LIMIT_WINDOW_MS,
+          lockoutMs: PROJECT_MUTATION_RATE_LIMIT_WINDOW_MS,
+        },
+        ctx.db.rateLimitAttempt,
+      );
       try {
         return await updateProject(
           input.id,
@@ -62,6 +89,16 @@ export const projectRouter = createTRPCRouter({
   delete: protectedProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
+      await consumeRateLimit(
+        {
+          scope: DELETE_PROJECT_RATE_LIMIT_SCOPE,
+          key: ctx.session.user.id,
+          limit: PROJECT_MUTATION_RATE_LIMIT_THRESHOLD,
+          windowMs: PROJECT_MUTATION_RATE_LIMIT_WINDOW_MS,
+          lockoutMs: PROJECT_MUTATION_RATE_LIMIT_WINDOW_MS,
+        },
+        ctx.db.rateLimitAttempt,
+      );
       try {
         await deleteProject(input.id, ctx.session.user.id, ctx.db);
         return { success: true as const };

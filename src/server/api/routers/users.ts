@@ -264,6 +264,12 @@ export const usersRouter = createTRPCRouter({
         });
       }
       await banUser(input.userId, ctx.db.user);
+      await logAdminAction(
+        ctx.session.user.id,
+        input.userId,
+        "ban",
+        ctx.db.adminActionAudit,
+      );
       return { success: true as const };
     }),
 

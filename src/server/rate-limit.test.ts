@@ -234,6 +234,12 @@ describe("resolveClientIp", () => {
     expect(resolveClientIp(headers)).toBe("150.172.238.178");
   });
 
+  it("ignores x-real-ip on Vercel when x-forwarded-for is missing", () => {
+    vi.stubEnv("VERCEL", "1");
+    const headers = new Headers({ "x-real-ip": "203.0.113.9" });
+    expect(resolveClientIp(headers)).toBe("unknown");
+  });
+
   it("ignores x-forwarded-for outside Vercel and falls back to x-real-ip", () => {
     vi.stubEnv("VERCEL", "0");
     const headers = new Headers({

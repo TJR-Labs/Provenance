@@ -383,6 +383,9 @@ export async function adminForcePasswordReset(
       userId: user.id,
     });
   }
+  // Deliberate fallback for a trusted, audited, small admin pool. The token
+  // must never be logged, pasted into tickets/chat tools with retention, or
+  // captured by client-side error reporting.
   return { emailSent, token: emailSent ? null : token };
 }
 

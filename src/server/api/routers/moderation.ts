@@ -19,6 +19,7 @@ import {
   reportInputSchema,
   ReportTargetNotFoundError,
 } from "~/server/reports";
+import { logAdminAction } from "~/server/users";
 
 const REPORT_RATE_LIMIT_SCOPE = "report";
 const REPORT_RATE_LIMIT_THRESHOLD = 10;
@@ -70,7 +71,16 @@ export const moderationRouter = createTRPCRouter({
     .input(z.object({ projectId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       try {
-        await removeReportedProject(input.projectId, ctx.db.project);
+        const project = await removeReportedProject(
+          input.projectId,
+          ctx.db.project,
+        );
+        await logAdminAction(
+          ctx.session.user.id,
+          project.userId,
+          "removeProject",
+          ctx.db.adminActionAudit,
+        );
         return { success: true as const };
       } catch (error) {
         if (

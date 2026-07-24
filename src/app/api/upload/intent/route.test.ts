@@ -1,9 +1,19 @@
+import { TRPCError } from "@trpc/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const authMock = vi.hoisted(() => vi.fn());
+const mocks = vi.hoisted(() => ({
+  auth: vi.fn(),
+  consumeRateLimit: vi.fn(),
+  rateLimitAttempt: {},
+}));
 
-vi.mock("~/server/auth", () => ({ auth: authMock }));
-vi.mock("~/server/db", () => ({ db: {} }));
+vi.mock("~/server/auth", () => ({ auth: mocks.auth }));
+vi.mock("~/server/db", () => ({
+  db: { rateLimitAttempt: mocks.rateLimitAttempt },
+}));
+vi.mock("~/server/rate-limit", () => ({
+  consumeRateLimit: mocks.consumeRateLimit,
+}));
 vi.mock("~/env", () => ({
   env: {
     SUPABASE_URL: "https://example.test",
@@ -26,19 +36,47 @@ function request(body: unknown) {
 }
 
 beforeEach(() => {
-  authMock.mockReset();
-  authMock.mockResolvedValue({ user: { id: "user-1" } });
+  mocks.auth.mockReset();
+  mocks.consumeRateLimit.mockReset();
+  mocks.auth.mockResolvedValue({ user: { id: "user-1" } });
+  mocks.consumeRateLimit.mockResolvedValue(undefined);
 });
 
 describe("POST /api/upload/intent validation", () => {
   it("requires authentication", async () => {
-    authMock.mockResolvedValue(null);
+    mocks.auth.mockResolvedValue(null);
 
     const response = await POST(
       request({ purpose: "project-media", mimeType: "image/png", byteSize: 8 }),
     );
 
     expect(response.status).toBe(401);
+  });
+
+  it("rate-limits authenticated requests by user id", async () => {
+    mocks.consumeRateLimit.mockRejectedValueOnce(
+      new TRPCError({ code: "TOO_MANY_REQUESTS" }),
+    );
+
+    const response = await POST(
+      request({
+        purpose: "project-media",
+        mimeType: "image/png",
+        byteSize: 8,
+      }),
+    );
+
+    expect(response.status).toBe(429);
+    expect(mocks.consumeRateLimit).toHaveBeenCalledWith(
+      {
+        scope: "upload.intent",
+        key: "user-1",
+        limit: 60,
+        windowMs: 60_000,
+        lockoutMs: 60_000,
+      },
+      mocks.rateLimitAttempt,
+    );
   });
 
   it("rejects an unknown purpose", async () => {
