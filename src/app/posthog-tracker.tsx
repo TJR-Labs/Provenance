@@ -60,19 +60,6 @@ export function PostHogTracker({ userId }: PostHogTrackerProps) {
   const lastQueryEventRef = useRef<string | null>(null);
 
   useEffect(() => {
-    const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
-    const host = process.env.NEXT_PUBLIC_POSTHOG_HOST;
-    if (!key || posthog.__loaded) return;
-
-    posthog.init(key, {
-      api_host: host ?? "https://us.i.posthog.com",
-      capture_pageview: false,
-      autocapture: false,
-      disable_session_recording: true,
-    });
-  }, []);
-
-  useEffect(() => {
     if (!posthog.__loaded) return;
 
     if (userId && userId !== lastIdentifiedUserIdRef.current) {
@@ -85,9 +72,35 @@ export function PostHogTracker({ userId }: PostHogTrackerProps) {
   }, [userId]);
 
   useEffect(() => {
+    const trackedRoute = shouldTrackPathname(pathname);
+    let initializedNow = false;
+
+    if (!posthog.__loaded) {
+      const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
+      if (!key || !trackedRoute) return;
+
+      const host = process.env.NEXT_PUBLIC_POSTHOG_HOST;
+      posthog.init(key, {
+        api_host: host ?? "https://us.i.posthog.com",
+        capture_pageview: false,
+        autocapture: false,
+        disable_session_recording: true,
+      });
+      initializedNow = posthog.__loaded;
+    }
+
     if (!posthog.__loaded) return;
 
-    const trackedRoute = shouldTrackPathname(pathname);
+    if (initializedNow) {
+      if (userId && userId !== lastIdentifiedUserIdRef.current) {
+        posthog.identify(userId);
+        lastIdentifiedUserIdRef.current = userId;
+      } else if (!userId && lastIdentifiedUserIdRef.current) {
+        posthog.reset();
+        lastIdentifiedUserIdRef.current = null;
+      }
+    }
+
     const pageviewSearchParams = new URLSearchParams(search);
     pageviewSearchParams.delete("ph_event");
     const pageviewKey = `${pathname}?${pageviewSearchParams.toString()}`;
@@ -122,7 +135,7 @@ export function PostHogTracker({ userId }: PostHogTrackerProps) {
     } else if (!event) {
       lastQueryEventRef.current = null;
     }
-  }, [pathname, search, searchParams]);
+  }, [pathname, search, searchParams, userId]);
 
   return null;
 }
