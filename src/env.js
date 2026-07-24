@@ -87,6 +87,8 @@ export function createAppEnv(source = process.env) {
     RESEND_API_KEY: source.RESEND_API_KEY,
     EMAIL_FROM: source.EMAIL_FROM,
     CRON_SECRET: source.CRON_SECRET,
+    NEXT_PUBLIC_POSTHOG_KEY: source.NEXT_PUBLIC_POSTHOG_KEY,
+    NEXT_PUBLIC_POSTHOG_HOST: source.NEXT_PUBLIC_POSTHOG_HOST,
     NODE_ENV: source.NODE_ENV,
   };
   const skipValidation = !!source.SKIP_ENV_VALIDATION;
@@ -148,7 +150,8 @@ export function createAppEnv(source = process.env) {
      * `NEXT_PUBLIC_`.
      */
     client: {
-      // NEXT_PUBLIC_CLIENTVAR: z.string(),
+      NEXT_PUBLIC_POSTHOG_KEY: z.string().min(1).optional(),
+      NEXT_PUBLIC_POSTHOG_HOST: z.string().url().optional(),
     },
 
     /**

@@ -28,16 +28,17 @@ export function middleware(request: NextRequest) {
   // dev mode is blocked without it. No app code under src/ uses eval/new
   // Function (verified — grep found none), so this exception has no effect
   // on the actual security posture of what ships to production.
+  // PostHog's asset host is allowed for lazy-loaded SDK resources.
   const scriptSrc =
     process.env.NODE_ENV === "production"
-      ? `'self' 'nonce-${nonce}'`
-      : `'self' 'nonce-${nonce}' 'unsafe-eval'`;
+      ? `'self' 'nonce-${nonce}' https://us-assets.i.posthog.com`
+      : `'self' 'nonce-${nonce}' 'unsafe-eval' https://us-assets.i.posthog.com`;
 
   // img-src allows www.google.com and *.gstatic.com: the canvas Link
   // element's third-party favicon-by-domain lookup (s2/favicons) redirects to
   // a gstatic.com host to serve the actual icon — see
   // specs/canvas-editor-refinements.md requirement 7.
-  const cspHeader = `default-src 'self'; script-src ${scriptSrc}; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://www.google.com https://*.gstatic.com; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'`;
+  const cspHeader = `default-src 'self'; script-src ${scriptSrc}; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://www.google.com https://*.gstatic.com; font-src 'self'; connect-src 'self' https://us.i.posthog.com https://us-assets.i.posthog.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'`;
 
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);

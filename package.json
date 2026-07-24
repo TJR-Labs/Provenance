@@ -42,6 +42,7 @@
     "bcryptjs": "^3.0.3",
     "next": "^15.5.21",
     "next-auth": "5.0.0-beta.32",
+    "posthog-js": "^1.405.2",
     "postcss": "^8.5.19",
     "postcss-selector-parser": "^7.1.4",
     "react": "^19.0.0",
