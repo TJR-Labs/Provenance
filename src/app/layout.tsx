@@ -8,6 +8,7 @@ import { headers } from "next/headers";
 import { Role } from "../../generated/prisma";
 import { TRPCReactProvider } from "~/trpc/react";
 import { auth, signOut } from "~/server/auth";
+import { PostHogTracker } from "./posthog-tracker";
 import { ThemeToggle } from "./theme-toggle";
 
 const newsreader = Newsreader({
@@ -65,6 +66,7 @@ export default async function RootLayout({
           suppressHydrationWarning
           dangerouslySetInnerHTML={{ __html: themeInitScript }}
         />
+        <PostHogTracker userId={session?.user.id ?? null} />
         <TRPCReactProvider>
           <div className="flex min-h-screen flex-col">
             <header className="border-line bg-canvas border-b px-6 py-4">
