@@ -92,7 +92,12 @@ export function createAppEnv(source = process.env) {
     NODE_ENV: source.NODE_ENV,
   };
   const skipValidation = !!source.SKIP_ENV_VALIDATION;
-  const isProduction = source.NODE_ENV === "production";
+  // On Vercel, `next build` always sets NODE_ENV=production, including for
+  // Preview deployments, so VERCEL_ENV (only set on Vercel) is the accurate
+  // signal there. Off Vercel, fall back to NODE_ENV.
+  const isProduction = source.VERCEL_ENV
+    ? source.VERCEL_ENV === "production"
+    : source.NODE_ENV === "production";
 
   if (!skipValidation) {
     const oauthProviderPairs = oauthProviderPairsSchema.safeParse(runtimeEnv);
