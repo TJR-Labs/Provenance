@@ -6,12 +6,19 @@ import GitHub, {
 import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
 import { cookies } from "next/headers";
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import type { Role } from "../../../generated/prisma";
 import { env } from "~/env";
 import { verifyPassword } from "~/server/auth/password";
 import { db } from "~/server/db";
+import { recordLoginFailure } from "~/server/login-attempts";
+import {
+  assertNotLockedOut,
+  recordRateLimitFailure,
+  resolveClientIp,
+} from "~/server/rate-limit";
 import {
   completeOAuthLink,
   consumeCompletedOAuthSignup,
@@ -27,6 +34,7 @@ import {
 
 declare module "next-auth" {
   interface Session extends DefaultSession {
+    authenticatedAt?: number;
     user: {
       id: string;
       role: Role;
@@ -41,9 +49,13 @@ const credentialsSchema = z.object({
   password: z.string().min(1),
 });
 
-const LOGIN_FAILURE_THRESHOLD = 10;
-const LOGIN_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
-const LOGIN_LOCKOUT_DURATION_MS = 15 * 60 * 1000;
+export const LOGIN_FAILURE_THRESHOLD = 10;
+export const LOGIN_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
+export const LOGIN_LOCKOUT_DURATION_MS = 15 * 60 * 1000;
+export const LOGIN_IP_RATE_LIMIT_SCOPE = "login-ip";
+export const LOGIN_IP_FAILURE_THRESHOLD = 30;
+export const LOGIN_IP_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
+export const LOGIN_IP_LOCKOUT_DURATION_MS = 15 * 60 * 1000;
 
 function authUser(user: {
   id: string;
@@ -51,6 +63,7 @@ function authUser(user: {
   email: string | null;
   role: Role;
   displayName: string;
+  sessionVersion: number;
 }) {
   return {
     id: user.id,
@@ -59,6 +72,7 @@ function authUser(user: {
     username: user.username,
     role: user.role,
     displayName: user.displayName,
+    sessionVersion: user.sessionVersion,
   };
 }
 
@@ -85,7 +99,7 @@ export const authConfig = {
         username: { label: "Username", type: "text" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, request) {
         const oauthSignupToken = (credentials as Record<string, unknown>)
           .oauthSignupToken;
         if (typeof oauthSignupToken === "string" && oauthSignupToken) {
@@ -97,6 +111,23 @@ export const authConfig = {
         if (!parsed.success) return null;
 
         const username = parsed.data.username.toLowerCase();
+        const clientIp = resolveClientIp(request.headers);
+        try {
+          await assertNotLockedOut(
+            LOGIN_IP_RATE_LIMIT_SCOPE,
+            clientIp,
+            db.rateLimitAttempt,
+          );
+        } catch (error) {
+          if (
+            error instanceof TRPCError &&
+            error.code === "TOO_MANY_REQUESTS"
+          ) {
+            return null;
+          }
+          throw error;
+        }
+
         const now = new Date();
         const loginAttempt = await db.loginAttempt.findUnique({
           where: { username },
@@ -116,35 +147,23 @@ export const authConfig = {
           !user ||
           !(await verifyPassword(parsed.data.password, user.passwordHash))
         ) {
-          let startsNewWindow = true;
-          let failedCount = 1;
-          if (
-            loginAttempt?.lockedUntil === null &&
-            now.getTime() - loginAttempt.firstFailedAt.getTime() <
-              LOGIN_ATTEMPT_WINDOW_MS
-          ) {
-            startsNewWindow = false;
-            failedCount = loginAttempt.failedCount + 1;
-          }
-          const lockedUntil =
-            failedCount >= LOGIN_FAILURE_THRESHOLD
-              ? new Date(now.getTime() + LOGIN_LOCKOUT_DURATION_MS)
-              : null;
-
-          await db.loginAttempt.upsert({
-            where: { username },
-            create: {
-              username,
-              failedCount,
-              firstFailedAt: now,
-              lockedUntil,
-            },
-            update: {
-              failedCount,
-              ...(startsNewWindow && { firstFailedAt: now }),
-              lockedUntil,
-            },
-          });
+          await Promise.all([
+            recordLoginFailure(username, {
+              threshold: LOGIN_FAILURE_THRESHOLD,
+              windowMs: LOGIN_ATTEMPT_WINDOW_MS,
+              lockoutMs: LOGIN_LOCKOUT_DURATION_MS,
+            }),
+            recordRateLimitFailure(
+              {
+                scope: LOGIN_IP_RATE_LIMIT_SCOPE,
+                key: clientIp,
+                limit: LOGIN_IP_FAILURE_THRESHOLD,
+                windowMs: LOGIN_IP_ATTEMPT_WINDOW_MS,
+                lockoutMs: LOGIN_IP_LOCKOUT_DURATION_MS,
+              },
+              db.rateLimitAttempt,
+            ),
+          ]);
 
           return null;
         }
@@ -154,58 +173,71 @@ export const authConfig = {
         return {
           id: user.id,
           name: user.displayName,
+          email: user.email,
           username: user.username,
           role: user.role,
           displayName: user.displayName,
+          sessionVersion: user.sessionVersion,
         };
       },
     }),
-    Google({
-      clientId: env.GOOGLE_CLIENT_ID,
-      clientSecret: env.GOOGLE_CLIENT_SECRET,
-    }),
-    GitHub({
-      clientId: env.GITHUB_CLIENT_ID,
-      clientSecret: env.GITHUB_CLIENT_SECRET,
-      userinfo: {
-        url: "https://api.github.com/user",
-        async request({ tokens }: { tokens: { access_token?: string } }) {
-          const headers = {
-            Authorization: `Bearer ${tokens.access_token}`,
-            "User-Agent": "provenance",
-          };
-          const profileResponse = await fetch("https://api.github.com/user", {
-            headers,
-          });
-          if (!profileResponse.ok) {
-            throw new Error("GitHub did not return an OAuth profile.");
-          }
-          const profile = (await profileResponse.json()) as GitHubProfile & {
-            email_verified?: boolean;
-          };
+    ...(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
+      ? [
+          Google({
+            clientId: env.GOOGLE_CLIENT_ID,
+            clientSecret: env.GOOGLE_CLIENT_SECRET,
+          }),
+        ]
+      : []),
+    ...(env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET
+      ? [
+          GitHub({
+            clientId: env.GITHUB_CLIENT_ID,
+            clientSecret: env.GITHUB_CLIENT_SECRET,
+            userinfo: {
+              url: "https://api.github.com/user",
+              async request({ tokens }: { tokens: { access_token?: string } }) {
+                const headers = {
+                  Authorization: `Bearer ${tokens.access_token}`,
+                  "User-Agent": "provenance",
+                };
+                const profileResponse = await fetch(
+                  "https://api.github.com/user",
+                  { headers },
+                );
+                if (!profileResponse.ok) {
+                  throw new Error("GitHub did not return an OAuth profile.");
+                }
+                const profile =
+                  (await profileResponse.json()) as GitHubProfile & {
+                    email_verified?: boolean;
+                  };
 
-          const emailsResponse = await fetch(
-            "https://api.github.com/user/emails",
-            { headers },
-          );
-          const emails = emailsResponse.ok
-            ? ((await emailsResponse.json()) as GitHubEmail[])
-            : [];
-          const selectedEmail = profile.email
-            ? emails.find(
-                (candidate) =>
-                  candidate.email.toLowerCase() ===
-                  profile.email?.toLowerCase(),
-              )
-            : (emails.find((candidate) => candidate.primary) ?? emails[0]);
-          if (!profile.email && selectedEmail) {
-            profile.email = selectedEmail.email;
-          }
-          profile.email_verified = selectedEmail?.verified === true;
-          return profile;
-        },
-      },
-    }),
+                const emailsResponse = await fetch(
+                  "https://api.github.com/user/emails",
+                  { headers },
+                );
+                const emails = emailsResponse.ok
+                  ? ((await emailsResponse.json()) as GitHubEmail[])
+                  : [];
+                const selectedEmail = profile.email
+                  ? emails.find(
+                      (candidate) =>
+                        candidate.email.toLowerCase() ===
+                        profile.email?.toLowerCase(),
+                    )
+                  : (emails.find((candidate) => candidate.primary) ??
+                    emails[0]);
+                if (!profile.email && selectedEmail) {
+                  profile.email = selectedEmail.email;
+                }
+                profile.email_verified = selectedEmail?.verified === true;
+                return profile;
+              },
+            },
+          }),
+        ]
+      : []),
   ],
   callbacks: {
     async signIn({ user, account, profile }) {
@@ -270,9 +302,17 @@ export const authConfig = {
           username: true,
           email: true,
           banned: true,
+          sessionVersion: true,
         },
       });
       if (!currentUser || currentUser.banned) return null;
+      const tokenSessionVersion =
+        typeof token.sessionVersion === "number"
+          ? token.sessionVersion
+          : undefined;
+      if (!user && tokenSessionVersion !== currentUser.sessionVersion) {
+        return null;
+      }
 
       return {
         ...token,
@@ -282,12 +322,18 @@ export const authConfig = {
         role: currentUser.role,
         displayName: currentUser.displayName,
         username: currentUser.username,
+        sessionVersion: currentUser.sessionVersion,
+        authenticatedAt:
+          user || typeof token.authenticatedAt !== "number"
+            ? Date.now()
+            : token.authenticatedAt,
       };
     },
     session({ session, token }) {
       const displayName = token.displayName as string;
       const authenticatedSession: Session = {
         expires: session.expires,
+        authenticatedAt: token.authenticatedAt as number,
         user: {
           id: token.sub!,
           name: displayName,

@@ -34,7 +34,9 @@ export async function updateProfileAction(formData: FormData) {
   let destination = "/profile/edit?success=1";
   try {
     if (!theme) throw new Error("Choose a supported theme.");
-    await (
+    // profile.update returns the acting user (including username), so the
+    // success redirect target needs no extra session round trip.
+    const updated = await (
       await getServerCaller()
     ).profile.update({
       displayName: value(formData, "displayName"),
@@ -45,7 +47,11 @@ export async function updateProfileAction(formData: FormData) {
       theme,
       layoutSections: sections,
       customCss: value(formData, "customCss"),
+      private: value(formData, "private") === "on",
     });
+    // Drop the user back on their live profile with a transient save flag,
+    // instead of leaving them mid-edit.
+    destination = `/${encodeURIComponent(updated.username)}?saved=1`;
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Unable to update profile.";

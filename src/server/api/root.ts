@@ -1,5 +1,6 @@
+import { canvasRouter } from "~/server/api/routers/canvas";
 import { discoveryRouter } from "~/server/api/routers/discovery";
-import { healthRouter } from "~/server/api/routers/health";
+import { gridRouter } from "~/server/api/routers/grid";
 import { moderationRouter } from "~/server/api/routers/moderation";
 import { profileRouter } from "~/server/api/routers/profile";
 import { projectRouter } from "~/server/api/routers/project";
@@ -12,8 +13,9 @@ import { createCallerFactory, createTRPCRouter } from "~/server/api/trpc";
  * All routers added in /api/routers should be manually added here.
  */
 export const appRouter = createTRPCRouter({
+  canvas: canvasRouter,
   discovery: discoveryRouter,
-  health: healthRouter,
+  grid: gridRouter,
   moderation: moderationRouter,
   profile: profileRouter,
   project: projectRouter,
@@ -26,8 +28,8 @@ export type AppRouter = typeof appRouter;
 /**
  * Create a server-side caller for the tRPC API.
  * @example
- * const trpc = createCaller(createContext);
- * const res = await trpc.health.check();
- *       ^? { status: "ok" }
+ * const response = await fetch("/api/health/ready");
+ * const result = await response.json();
+ *       ^? { status: "ok" } | { status: "unavailable" }
  */
 export const createCaller = createCallerFactory(appRouter);

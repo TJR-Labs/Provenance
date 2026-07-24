@@ -12,6 +12,13 @@ env:
   DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
   DIRECT_URL: postgresql://ci:ci@localhost:5432/ci
   AUTH_SECRET: ci-dummy-secret
+  SUPABASE_URL: https://ci-dummy.supabase.co
+  SUPABASE_SERVICE_ROLE_KEY: ci-dummy-service-role-key
+  SUPABASE_STORAGE_BUCKET: project-media
+  SUPABASE_STORAGE_STAGING_BUCKET: upload-staging
+  CRON_SECRET: ci-dummy-cron-secret
+  # RESEND_API_KEY / EMAIL_FROM intentionally unset: no sending domain yet,
+  # and the build/app must work without them (see README).
 
 jobs:
   ci:
@@ -40,3 +47,6 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high

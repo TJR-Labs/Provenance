@@ -71,6 +71,8 @@ export async function saveProjectAction(
     hashtags: lines(value(formData, "hashtags")),
     links: lines(value(formData, "links")),
     layout,
+    private: value(formData, "private") === "on",
+    excludeFromFeed: value(formData, "includeInFeed") !== "on",
     media,
   };
 
@@ -80,7 +82,9 @@ export async function saveProjectAction(
     const project = projectId
       ? await caller.project.update({ id: projectId, project: input })
       : await caller.project.create(input);
-    destination = `/projects/${project.id}`;
+    destination = projectId
+      ? `/projects/${project.id}`
+      : `/projects/${project.id}?ph_event=project_created`;
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Unable to save this project.";

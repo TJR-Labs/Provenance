@@ -5,7 +5,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { getServerCaller } from "~/server/api/caller";
-import { signIn } from "~/server/auth";
+import { signIn, signOut } from "~/server/auth";
 import { OAUTH_LINK_COOKIE, oauthProviderSchema } from "~/server/users";
 
 function getString(formData: FormData, name: string) {
@@ -98,4 +98,55 @@ export async function setPasswordAction(formData: FormData) {
     destination = `/account?error=${encodeURIComponent(message)}`;
   }
   redirect(destination);
+}
+
+export async function requestEmailVerificationAction(formData: FormData) {
+  let destination = "/account?success=verification-sent";
+  try {
+    await (
+      await getServerCaller()
+    ).users.requestEmailVerification({
+      email: getString(formData, "email"),
+    });
+  } catch (error) {
+    const message =
+      error instanceof TRPCError
+        ? error.message
+        : "Unable to send a verification email.";
+    destination = `/account?error=${encodeURIComponent(message)}`;
+  }
+  redirect(destination);
+}
+
+export async function reauthenticateOAuthAction(formData: FormData) {
+  const providerResult = oauthProviderSchema.safeParse(
+    getString(formData, "provider"),
+  );
+  if (!providerResult.success) {
+    redirect("/account?error=Invalid%20OAuth%20provider.");
+  }
+  await signIn(providerResult.data, {
+    redirectTo: "/account?success=reauthenticated",
+  });
+}
+
+export async function deleteAccountAction(formData: FormData) {
+  let errorDestination: string | null = null;
+  try {
+    await (
+      await getServerCaller()
+    ).users.requestAccountDeletion({
+      confirmation: getString(formData, "confirmation") as "DELETE",
+      currentPassword: getString(formData, "currentPassword") || undefined,
+    });
+  } catch (error) {
+    const message =
+      error instanceof TRPCError
+        ? error.message
+        : "Unable to delete the account. No changes were made.";
+    errorDestination = `/account?error=${encodeURIComponent(message)}`;
+  }
+
+  if (errorDestination) redirect(errorDestination);
+  await signOut({ redirectTo: "/?accountDeleted=1" });
 }

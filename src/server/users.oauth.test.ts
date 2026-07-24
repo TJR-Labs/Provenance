@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => {
   const database = {
     user: {
       findUnique: vi.fn(),
+      update: vi.fn(),
     },
     account: {
       count: vi.fn(),
@@ -36,6 +37,8 @@ const user = {
   id: "user-1",
   username: "alice",
   email: "alice@example.com",
+  emailVerified: null,
+  sessionVersion: 0,
   role: "USER",
   displayName: "Alice",
   banned: false,
@@ -54,6 +57,10 @@ beforeEach(() => {
   mocks.database.pendingOAuthSignup.deleteMany.mockResolvedValue({ count: 0 });
   mocks.database.pendingOAuthSignup.create.mockResolvedValue({
     id: "pending-1",
+  });
+  mocks.database.user.update.mockResolvedValue({
+    ...user,
+    emailVerified: new Date(),
   });
 });
 
@@ -81,6 +88,12 @@ describe("OAuth account resolution", () => {
         providerAccountId: "google-1",
       },
     });
+    expect(mocks.database.user.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: user.id } }),
+    );
+    const verificationUpdate = mocks.database.user.update.mock.calls[0]?.[0] as
+      { data: { emailVerified: unknown } } | undefined;
+    expect(verificationUpdate?.data.emailVerified).toBeInstanceOf(Date);
     expect(mocks.database.pendingOAuthSignup.create).not.toHaveBeenCalled();
   });
 

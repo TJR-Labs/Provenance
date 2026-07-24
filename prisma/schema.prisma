@@ -35,27 +35,144 @@ enum MediaKind {
   EXTERNAL
 }
 
+enum UploadIntentStatus {
+  PENDING
+  FINALIZED
+  FAILED
+  EXPIRED
+}
+
+enum LayoutMode {
+  GRID
+  CANVAS
+}
+
+enum CanvasElementType {
+  ABOUT
+  LINKS
+  PROJECT
+  TEXT
+  IMAGE
+  LINK
+  AVATAR
+  NAME
+  USERNAME
+  CATEGORIES
+}
+
+enum CanvasElementState {
+  DRAFT
+  PUBLISHED
+}
+
+enum GridLayoutScope {
+  PROFILE
+  PROJECT
+}
+
+enum GridLayoutState {
+  DRAFT
+  PUBLISHED
+}
+
+enum GridBlockType {
+  PROJECT
+  IMAGE
+  TEXT
+  LINK
+}
+
 model User {
-  id               String            @id @default(cuid())
-  username         String            @unique
-  passwordHash     String?
-  email            String?           @unique
-  role             Role              @default(USER)
-  displayName      String
-  bio              String?
-  school           String?
-  avatarUrl        String?
-  links            Json?
-  theme            String            @default("default")
-  layoutSections   Json?
-  customCss        String?
-  banned           Boolean           @default(false)
-  createdAt        DateTime          @default(now())
-  projects         Project[]
-  reportsMade      Report[]          @relation("ReportsMade")
-  reportsAgainst   Report[]          @relation("ReportsAgainstUser")
-  accounts         Account[]
-  oauthLinkIntents OAuthLinkIntent[]
+  id                         String                   @id @default(cuid())
+  username                   String                   @unique
+  passwordHash               String?
+  email                      String?                  @unique
+  emailVerified              DateTime?
+  sessionVersion             Int                      @default(0)
+  role                       Role                     @default(USER)
+  displayName                String
+  bio                        String?
+  school                     String?
+  avatarUrl                  String?
+  links                      Json?
+  theme                      String                   @default("default")
+  canvasBackgroundColor      String?
+  canvasBackgroundImageUrl   String?
+  canvasBackgroundResourceId String?
+  canvasBackgroundResource   ImageResource?           @relation("BackgroundResource", fields: [canvasBackgroundResourceId], references: [id], onDelete: SetNull)
+  layoutSections             Json?
+  layoutMode                 LayoutMode               @default(GRID)
+  canvasDraftSavedAt         DateTime?
+  canvasPublishedAt          DateTime?
+  canvasDraftRevision        Int                      @default(0)
+  canvasDraftSnapshot        Json?
+  canvasHintDismissedAt      DateTime?
+  onboardingDismissedAt      DateTime?
+  customCss                  String?
+  banned                     Boolean                  @default(false)
+  private                    Boolean                  @default(false)
+  createdAt                  DateTime                 @default(now())
+  projects                   Project[]
+  reportsMade                Report[]                 @relation("ReportsMade")
+  reportsAgainst             Report[]                 @relation("ReportsAgainstUser")
+  accounts                   Account[]
+  oauthLinkIntents           OAuthLinkIntent[]
+  canvasElements             CanvasElement[]
+  imageResources             ImageResource[]
+  uploadIntents              UploadIntent[]
+  gridLayouts                GridLayout[]             @relation("OwnedGridLayouts")
+  passwordResetTokens        PasswordResetToken[]
+  emailVerificationTokens    EmailVerificationToken[]
+
+  @@index([canvasBackgroundResourceId])
+  @@index([createdAt, id])
+}
+
+model PasswordResetToken {
+  id         String    @id @default(cuid())
+  tokenHash  String    @unique
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt])
+}
+
+model EmailVerificationToken {
+  id         String    @id @default(cuid())
+  tokenHash  String    @unique
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  email      String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt])
+}
+
+model AccountDeletionAudit {
+  id                   String   @id @default(cuid())
+  subjectHash          String   @unique
+  storageObjectsQueued Int
+  requestedAt          DateTime @default(now())
+
+  @@index([requestedAt])
+}
+
+model AdminActionAudit {
+  id           String   @id @default(cuid())
+  actorId      String
+  targetUserId String
+  action       String
+  createdAt    DateTime @default(now())
+
+  @@index([targetUserId, createdAt])
+  @@index([actorId, createdAt])
 }
 
 model Account {
@@ -103,41 +220,213 @@ model LoginAttempt {
   lockedUntil   DateTime?
 }
 
-model Project {
-  id          String         @id @default(cuid())
-  userId      String
-  user        User           @relation(fields: [userId], references: [id])
-  title       String
-  description String
-  category    Category
-  hashtags    String[]
-  links       String[]
-  layout      String         @default("default")
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  media       ProjectMedia[]
-  reports     Report[]
+// Reusable rate-limit/lockout ledger, modeled on LoginAttempt: a rolling
+// window count keyed by an arbitrary (scope, key) pair, with an optional
+// lockout timestamp once a threshold is reached. `scope` namespaces the
+// limiter (e.g. "signup", "report", "change-password") and `key` identifies
+// the caller within that scope (an IP address or a user id).
+model RateLimitAttempt {
+  scope       String
+  key         String
+  count       Int
+  windowStart DateTime
+  lockedUntil DateTime?
+
+  @@id([scope, key])
+}
+
+model UploadIntent {
+  id                  String             @id @default(cuid())
+  userId              String
+  user                User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose             String
+  declaredMimeType    String
+  declaredByteSize    Int
+  stagingBucket       String
+  stagingPath         String             @unique
+  status              UploadIntentStatus
+  expiresAt           DateTime
+  resultUrl           String?
+  resultMimeType      String?
+  resultResourceId    String?
+  resultStorageBucket String?
+  resultStoragePath   String?
+  resultByteSize      Int?
+  storageDeletedAt    DateTime?
+  stagingDeletedAt    DateTime?
+  createdAt           DateTime           @default(now())
+  finalizedAt         DateTime?
 
   @@index([userId])
+  @@index([status, expiresAt])
+  @@index([userId, status, storageDeletedAt])
+  @@index([resultStorageBucket, resultStoragePath])
+}
+
+model PendingStorageDeletion {
+  bucket    String
+  path      String
+  reason    String
+  createdAt DateTime @default(now())
+  attempts  Int      @default(0)
+  lastError String?
+
+  @@id([bucket, path])
+  @@index([attempts, createdAt])
+}
+
+model Project {
+  id              String          @id @default(cuid())
+  userId          String
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title           String
+  description     String
+  category        Category
+  hashtags        String[]
+  links           String[]
+  layout          String          @default("default")
+  private         Boolean         @default(false)
+  excludeFromFeed Boolean         @default(false)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  media           ProjectMedia[]
+  reports         Report[]
+  canvasElements  CanvasElement[]
+  gridLayouts     GridLayout[]
+  gridBlocks      GridBlock[]     @relation("GridBlockProject")
+
+  @@unique([id, userId])
+  @@index([userId])
   @@index([category])
+  @@index([userId, private, createdAt, id])
+  @@index([private, createdAt, id])
+  @@index([category, private, createdAt, id])
+  @@index([hashtags], type: Gin)
+}
+
+model GridLayout {
+  id        String          @id @default(cuid())
+  ownerId   String
+  owner     User            @relation("OwnedGridLayouts", fields: [ownerId], references: [id], onDelete: Cascade)
+  projectId String?
+  project   Project?        @relation(fields: [projectId, ownerId], references: [id, userId], onDelete: Cascade)
+  scope     GridLayoutScope
+  state     GridLayoutState
+  revision  Int             @default(0)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  blocks    GridBlock[]
+
+  @@index([ownerId, scope, state])
+  @@index([projectId, state])
+}
+
+model GridBlock {
+  id            String        @id @default(cuid())
+  layoutId      String
+  layout        GridLayout    @relation(fields: [layoutId], references: [id], onDelete: Cascade)
+  key           String
+  order         Int
+  type          GridBlockType
+  x             Int
+  y             Int
+  width         Int
+  height        Int
+  projectId     String?
+  project       Project?      @relation("GridBlockProject", fields: [projectId], references: [id], onDelete: SetNull)
+  textContent   String?
+  imageUrl      String?
+  imageMimeType String?
+  imageAlt      String?
+  linkLabel     String?
+  linkUrl       String?
+
+  @@unique([layoutId, key])
+  @@unique([layoutId, order])
+  @@index([projectId])
+}
+
+model CanvasElement {
+  id                         String             @id @default(cuid())
+  userId                     String
+  user                       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  state                      CanvasElementState
+  type                       CanvasElementType
+  projectId                  String?
+  project                    Project?           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  x                          Int
+  y                          Int
+  width                      Int
+  height                     Int
+  zIndex                     Int
+  locked                     Boolean            @default(false)
+  resourceId                 String?
+  resource                   ImageResource?     @relation(fields: [resourceId], references: [id], onDelete: SetNull)
+  textContent                String?
+  imageUrl                   String?
+  imageCaption               String?
+  linkLabel                  String?
+  linkUrl                    String?
+  textColor                  String?
+  backgroundColor            String?
+  fontFamily                 String?
+  avatarShape                String?
+  avatarZoom                 Int?
+  avatarOffsetX              Int?
+  avatarOffsetY              Int?
+  // Canvas-only overrides for a placed PROJECT element. Each is scoped to this
+  // one CanvasElement row and never touches the underlying Project record.
+  // Null = unset (fall back to the real project value). For hashtags, a Json
+  // column distinguishes unset (SQL NULL) from an explicit empty-list override
+  // (`[]`), which a nullable String[] cannot express.
+  projectTitleOverride       String?
+  projectDescriptionOverride String?
+  projectHashtagsOverride    Json?
+  cardLayout                 String?
+
+  @@index([userId, state])
+  @@index([resourceId])
+}
+
+model ImageResource {
+  id              String          @id @default(cuid())
+  userId          String
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  url             String
+  mimeType        String
+  storageBucket   String?
+  storagePath     String?
+  storageByteSize Int?
+  createdAt       DateTime        @default(now())
+  removedAt       DateTime?
+  elements        CanvasElement[]
+  backgroundUsers User[]          @relation("BackgroundResource")
+
+  @@index([userId, removedAt])
+  @@index([storageBucket, storagePath])
 }
 
 model ProjectMedia {
-  id        String    @id @default(cuid())
-  projectId String
-  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  kind      MediaKind
-  url       String
-  mimeType  String?
-  order     Int       @default(0)
+  id              String    @id @default(cuid())
+  projectId       String
+  project         Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  kind            MediaKind
+  url             String
+  mimeType        String?
+  storageBucket   String?
+  storagePath     String?
+  storageByteSize Int?
+  order           Int       @default(0)
 
   @@index([projectId])
+  @@index([projectId, order, id])
+  @@index([storageBucket, storagePath])
 }
 
 model Report {
   id             String   @id @default(cuid())
-  reporterId     String
-  reporter       User     @relation("ReportsMade", fields: [reporterId], references: [id])
+  reporterId     String?
+  reporter       User?    @relation("ReportsMade", fields: [reporterId], references: [id], onDelete: SetNull)
   projectId      String?
   project        Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
   reportedUserId String?
@@ -148,4 +437,5 @@ model Report {
   @@index([projectId])
   @@index([reportedUserId])
   @@index([createdAt])
+  @@index([createdAt, id])
 }

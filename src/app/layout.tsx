@@ -3,10 +3,12 @@ import "~/styles/globals.css";
 import type { Metadata } from "next";
 import { Newsreader, Spline_Sans, Spline_Sans_Mono } from "next/font/google";
 import Link from "next/link";
+import { headers } from "next/headers";
 
 import { Role } from "../../generated/prisma";
 import { TRPCReactProvider } from "~/trpc/react";
 import { auth, signOut } from "~/server/auth";
+import { PostHogTracker } from "./posthog-tracker";
 import { ThemeToggle } from "./theme-toggle";
 
 const newsreader = Newsreader({
@@ -33,12 +35,18 @@ export const metadata: Metadata = {
 
 // Runs before paint: applies the persisted theme (or the system preference)
 // so there is never a flash of the wrong theme.
+//
+// This is the only developer-authored inline <script> in the app. It is
+// allow-listed under the tightened CSP script-src via a per-request nonce
+// (generated in middleware.ts and threaded through here via the `x-nonce`
+// request header) rather than 'unsafe-inline'.
 const themeInitScript = `(function(){var d=document.documentElement;var t=null;try{t=localStorage.getItem("pv-theme")}catch(e){}if(t!=="light"&&t!=="dark"){t=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"}d.setAttribute("data-theme",t)})();`;
 
 export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   const session = await auth();
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
 
   return (
     <html
@@ -47,7 +55,18 @@ export default async function RootLayout({
       className={`${newsreader.variable} ${splineSans.variable} ${splineSansMono.variable} h-full`}
     >
       <body className="bg-canvas text-ink min-h-full font-sans antialiased">
-        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        <script
+          nonce={nonce}
+          // Browsers deliberately hide the `nonce` attribute from
+          // getAttribute()/outerHTML after the element is parsed (so other
+          // scripts can't read and reuse it), which makes React's hydration
+          // diff see a mismatch on this attribute even though nothing is
+          // actually wrong. suppressHydrationWarning silences that expected,
+          // harmless warning without affecting the tightened CSP itself.
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{ __html: themeInitScript }}
+        />
+        <PostHogTracker userId={session?.user.id ?? null} />
         <TRPCReactProvider>
           <div className="flex min-h-screen flex-col">
             <header className="border-line bg-canvas border-b px-6 py-4">
@@ -79,10 +98,10 @@ export default async function RootLayout({
                         My profile
                       </Link>
                       <Link
-                        href="/projects/new"
+                        href="/my-work"
                         className="text-muted hover:text-ink font-medium transition-colors"
                       >
-                        New project
+                        My Work
                       </Link>
                       <Link
                         href="/account"

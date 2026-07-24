@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+import { uploadFileDirect } from "~/lib/direct-upload";
+
 type MediaItem = {
   kind: "UPLOAD" | "EXTERNAL";
   url: string;
@@ -19,6 +21,8 @@ type ProjectFormProps = {
     hashtags: string[];
     links: string[];
     layout: string;
+    private: boolean;
+    excludeFromFeed: boolean;
     media: MediaItem[];
   };
 };
@@ -37,22 +41,13 @@ export function ProjectForm({
   async function upload(file: File) {
     setUploading(true);
     setUploadError("");
-    const body = new FormData();
-    body.set("file", file);
     try {
-      const response = await fetch("/api/upload", { method: "POST", body });
-      const result = (await response.json()) as {
-        url?: string;
-        mimeType?: string;
-        error?: string;
-      };
-      if (!response.ok || !result.url)
-        throw new Error(result.error ?? "Upload failed.");
+      const result = await uploadFileDirect(file, "project-media");
       setMedia((items) => [
         ...items,
         {
           kind: "UPLOAD",
-          url: result.url!,
+          url: result.url,
           mimeType: result.mimeType ?? file.type,
         },
       ]);
@@ -231,6 +226,36 @@ export function ProjectForm({
           </p>
         )}
         <input type="hidden" name="media" value={JSON.stringify(media)} />
+      </fieldset>
+
+      <fieldset className="border-line space-y-4 rounded-md border p-4">
+        <legend className="font-display text-ink text-lg font-semibold">
+          Visibility
+        </legend>
+        <label className="text-ink flex items-start gap-3 text-sm font-medium">
+          <input
+            type="checkbox"
+            name="includeInFeed"
+            defaultChecked={initial ? !initial.excludeFromFeed : true}
+            className="border-line-strong bg-canvas text-accent mt-0.5 h-4 w-4 rounded border"
+          />
+          <span>
+            Include in the main discovery feed
+            <span className="text-muted mt-1 block font-normal">
+              When off, this project stays public but won&apos;t appear in the
+              main feed (still shows in category/hashtag search).
+            </span>
+          </span>
+        </label>
+        <label className="text-ink flex items-start gap-3 text-sm font-medium">
+          <input
+            type="checkbox"
+            name="private"
+            defaultChecked={initial?.private ?? false}
+            className="border-line-strong bg-canvas text-accent mt-0.5 h-4 w-4 rounded border"
+          />
+          <span>Make this project private — only visible to you.</span>
+        </label>
       </fieldset>
 
       <button

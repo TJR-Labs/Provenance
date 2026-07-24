@@ -1,7 +1,10 @@
+import { AuthError } from "next-auth";
 import { redirect } from "next/navigation";
 
 import { getServerCaller } from "~/server/api/caller";
+import { signIn } from "~/server/auth";
 import { OAuthButtons } from "../oauth-buttons";
+import { PasswordField } from "./password-field";
 
 type SignupPageProps = {
   searchParams: Promise<{ error?: string }>;
@@ -17,15 +20,20 @@ export default async function SignupPage({ searchParams }: SignupPageProps) {
       const item = formData.get(name);
       return typeof item === "string" ? item : "";
     };
-    let destination = "/login?created=1";
+    const password = value("password");
+    let username: string;
+    let emailSent = true;
     try {
-      await (
+      const user = await (
         await getServerCaller()
       ).users.signup({
         username: value("username"),
         displayName: value("displayName"),
-        password: value("password"),
+        email: value("email"),
+        password,
       });
+      username = user.username;
+      emailSent = user.emailSent !== false;
     } catch (caught) {
       const message =
         caught instanceof Error && caught.message.includes("already in use")
@@ -33,9 +41,31 @@ export default async function SignupPage({ searchParams }: SignupPageProps) {
           : caught instanceof Error
             ? caught.message
             : "Unable to create your account.";
-      destination = `/signup?error=${encodeURIComponent(message)}`;
+      redirect(`/signup?error=${encodeURIComponent(message)}`);
     }
-    redirect(destination);
+
+    if (!emailSent) {
+      redirect("/login?created=1&emailFailed=1&ph_event=signup_completed");
+    }
+
+    let signInFailed = false;
+    try {
+      await signIn("credentials", {
+        username,
+        password,
+        redirectTo: `/${username}?ph_event=signup_completed`,
+      });
+    } catch (error) {
+      if (error instanceof AuthError) {
+        signInFailed = true;
+      } else {
+        throw error;
+      }
+    }
+
+    if (signInFailed) {
+      redirect("/login?created=1&ph_event=signup_completed");
+    }
   }
 
   return (
@@ -78,16 +108,20 @@ export default async function SignupPage({ searchParams }: SignupPageProps) {
             />
           </label>
           <label className="text-ink block text-sm font-medium">
-            Password
+            Email
             <input
-              name="password"
-              type="password"
+              name="email"
+              type="email"
               required
-              minLength={8}
-              autoComplete="new-password"
+              maxLength={320}
+              autoComplete="email"
               className="border-line-strong bg-canvas text-ink focus:border-accent mt-2 block w-full rounded-md border px-3 py-2"
             />
+            <span className="text-muted mt-1 block text-xs">
+              We’ll send a verification link for password recovery.
+            </span>
           </label>
+          <PasswordField />
           <button className="bg-accent text-on-accent hover:bg-accent-strong w-full rounded-md px-4 py-2 font-semibold transition-colors">
             Sign up
           </button>

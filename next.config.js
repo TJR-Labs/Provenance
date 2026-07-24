@@ -31,11 +31,12 @@ const config = {
             key: "Strict-Transport-Security",
             value: "max-age=63072000; includeSubDomains; preload",
           },
-          {
-            key: "Content-Security-Policy",
-            value:
-              "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
-          },
+          // Content-Security-Policy is intentionally NOT set here: it needs a
+          // fresh per-request nonce for script-src (so the one legitimate
+          // inline script, themeInitScript in src/app/layout.tsx, can run
+          // without 'unsafe-inline'), and next.config.js's headers() can only
+          // return static values. See middleware.ts for the actual CSP header
+          // (same directives as before, script-src hardened to a nonce).
         ],
       },
     ];

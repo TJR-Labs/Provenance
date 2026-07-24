@@ -3,18 +3,38 @@ import { createHash, randomBytes } from "node:crypto";
 import { Role, type Prisma, type PrismaClient } from "../../generated/prisma";
 import { z } from "zod";
 
+import { safeExternalUrl } from "~/app/safe-external-url";
+import { PROFILE_THEMES } from "~/lib/profile-theme";
+import {
+  DuplicateEmailError,
+  emailSchema,
+  normalizeAccountEmail,
+} from "~/server/account-email";
 import { hashPassword, verifyPassword } from "~/server/auth/password";
 import { db } from "~/server/db";
+import {
+  assertNotLockedOut,
+  recordRateLimitFailure,
+  resetRateLimit,
+  type RateLimitDelegate,
+} from "~/server/rate-limit";
 
 type UserDelegate = Pick<
   PrismaClient["user"],
   "create" | "findUnique" | "update"
 >;
 
+const CHANGE_PASSWORD_RATE_LIMIT_SCOPE = "change-password";
+const CHANGE_PASSWORD_FAILURE_THRESHOLD = 10;
+const CHANGE_PASSWORD_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
+const CHANGE_PASSWORD_LOCKOUT_DURATION_MS = 15 * 60 * 1000;
+
 const oauthUserSelect = {
   id: true,
   username: true,
   email: true,
+  emailVerified: true,
+  sessionVersion: true,
   role: true,
   displayName: true,
   banned: true,
@@ -56,26 +76,38 @@ export const usernameSchema = z
 export const createUserInputSchema = z.object({
   username: usernameSchema,
   displayName: z.string().trim().min(1, "Display name is required.").max(80),
+  email: emailSchema,
   password: z.string().min(8, "Password must be at least 8 characters."),
 });
 
 export const profileLinkSchema = z.object({
   label: z.string().trim().min(1).max(40),
-  url: z.string().trim().url(),
+  url: z
+    .string()
+    .trim()
+    .url()
+    .refine(
+      (value) => Boolean(safeExternalUrl(value)),
+      "Enter a valid http(s) URL.",
+    ),
 });
 
-export const profileThemes = ["default", "paper", "studio"] as const;
+export const profileThemes = PROFILE_THEMES;
 export const profileSections = ["about", "projects", "links"] as const;
 
-export const updateProfileInputSchema = z.object({
+export const profileContentInputSchema = z.object({
   displayName: z.string().trim().min(1).max(80),
   bio: z.string().trim().max(2000).optional(),
   school: z.string().trim().max(160).optional(),
   avatarUrl: z.string().trim().url().optional().or(z.literal("")),
   links: z.array(profileLinkSchema).max(12),
+});
+
+export const updateProfileInputSchema = profileContentInputSchema.extend({
   theme: z.enum(profileThemes),
   layoutSections: z.array(z.enum(profileSections)).max(profileSections.length),
   customCss: z.string().max(20_000).optional(),
+  private: z.boolean().optional().default(false),
 });
 
 export type CreateUserInput = z.infer<typeof createUserInputSchema>;
@@ -274,6 +306,19 @@ export async function resolveOAuthSignIn(
   });
   if (linkedAccount) {
     assertActiveUser(linkedAccount.user);
+    if (
+      profile.emailVerified &&
+      profile.email &&
+      linkedAccount.user.email === profile.email &&
+      !linkedAccount.user.emailVerified
+    ) {
+      const verifiedUser = await database.user.update({
+        where: { id: linkedAccount.user.id },
+        data: { emailVerified: new Date() },
+        select: oauthUserSelect,
+      });
+      return { kind: "user" as const, user: verifiedUser };
+    }
     return { kind: "user" as const, user: linkedAccount.user };
   }
 
@@ -284,13 +329,20 @@ export async function resolveOAuthSignIn(
     });
     if (emailUser) {
       assertActiveUser(emailUser);
+      const verifiedUser = emailUser.emailVerified
+        ? emailUser
+        : await database.user.update({
+            where: { id: emailUser.id },
+            data: { emailVerified: new Date() },
+            select: oauthUserSelect,
+          });
       await createAccountLink(
-        emailUser.id,
+        verifiedUser.id,
         profile.provider,
         profile.providerAccountId,
         database.account,
       );
-      return { kind: "user" as const, user: emailUser };
+      return { kind: "user" as const, user: verifiedUser };
     }
   }
 
@@ -381,17 +433,24 @@ export async function completeOAuthSignup(
         });
         if (emailUser) {
           assertActiveUser(emailUser);
+          const verifiedUser = emailUser.emailVerified
+            ? emailUser
+            : await transaction.user.update({
+                where: { id: emailUser.id },
+                data: { emailVerified: new Date() },
+                select: oauthUserSelect,
+              });
           await createAccountLink(
-            emailUser.id,
+            verifiedUser.id,
             provider,
             pending.providerAccountId,
             transaction.account,
           );
           await transaction.pendingOAuthSignup.update({
             where: { id: pending.id },
-            data: { completedUserId: emailUser.id },
+            data: { completedUserId: verifiedUser.id },
           });
-          return emailUser;
+          return verifiedUser;
         }
       }
 
@@ -406,6 +465,7 @@ export async function completeOAuthSignup(
           username,
           displayName: oauthDisplayName(pending.name, username),
           email: verifiedEmail,
+          emailVerified: verifiedEmail ? new Date() : null,
           passwordHash: null,
           role: Role.USER,
         },
@@ -538,12 +598,16 @@ export async function getAccountSecurity(
     where: { id: userId },
     select: {
       passwordHash: true,
+      email: true,
+      emailVerified: true,
       accounts: { select: { provider: true } },
     },
   });
   if (!user) throw new InvalidOAuthFlowError();
   return {
     hasPassword: Boolean(user.passwordHash),
+    email: user.email,
+    emailVerified: Boolean(user.emailVerified),
     linkedProviders: user.accounts.map((account) =>
       oauthProviderSchema.parse(account.provider),
     ),
@@ -597,7 +661,10 @@ export async function setPassword(
 
   const result = await database.user.updateMany({
     where: { id: userId, passwordHash: null },
-    data: { passwordHash: await hashPassword(password) },
+    data: {
+      passwordHash: await hashPassword(password),
+      sessionVersion: { increment: 1 },
+    },
   });
   if (result.count !== 1) throw new PasswordAlreadySetError();
 }
@@ -608,18 +675,26 @@ export async function createUser(
 ) {
   const input = createUserInputSchema.parse(rawInput);
   const username = input.username.toLowerCase();
+  const email = normalizeAccountEmail(input.email);
 
   const existingUser = await users.findUnique({
     where: { username },
     select: { id: true },
   });
   if (existingUser) throw new DuplicateUsernameError();
+  const existingEmail = await users.findUnique({
+    where: { email },
+    select: { id: true },
+  });
+  if (existingEmail) throw new DuplicateEmailError();
 
   const passwordHash = await hashPassword(input.password);
   try {
     return await users.create({
       data: {
         username,
+        email,
+        emailVerified: null,
         displayName: input.displayName,
         role: Role.USER,
         passwordHash,
@@ -627,13 +702,21 @@ export async function createUser(
       select: {
         id: true,
         username: true,
+        email: true,
         displayName: true,
         role: true,
         createdAt: true,
       },
     });
   } catch (error) {
-    if (isUniqueConstraintError(error)) throw new DuplicateUsernameError();
+    if (isUniqueConstraintError(error)) {
+      const duplicateEmail = await users.findUnique({
+        where: { email },
+        select: { id: true },
+      });
+      if (duplicateEmail) throw new DuplicateEmailError();
+      throw new DuplicateUsernameError();
+    }
     throw error;
   }
 }
@@ -643,20 +726,43 @@ export async function changePassword(
   currentPassword: string,
   newPassword: string,
   users: UserDelegate = db.user,
+  rateLimits: RateLimitDelegate = db.rateLimitAttempt,
 ) {
+  await assertNotLockedOut(
+    CHANGE_PASSWORD_RATE_LIMIT_SCOPE,
+    userId,
+    rateLimits,
+    "Too many incorrect current-password attempts. Please try again later.",
+  );
+
   const user = await users.findUnique({
     where: { id: userId },
     select: { passwordHash: true },
   });
 
   if (!user || !(await verifyPassword(currentPassword, user.passwordHash))) {
+    await recordRateLimitFailure(
+      {
+        scope: CHANGE_PASSWORD_RATE_LIMIT_SCOPE,
+        key: userId,
+        limit: CHANGE_PASSWORD_FAILURE_THRESHOLD,
+        windowMs: CHANGE_PASSWORD_ATTEMPT_WINDOW_MS,
+        lockoutMs: CHANGE_PASSWORD_LOCKOUT_DURATION_MS,
+      },
+      rateLimits,
+    );
     throw new InvalidCurrentPasswordError();
   }
 
   await users.update({
     where: { id: userId },
-    data: { passwordHash: await hashPassword(newPassword) },
+    data: {
+      passwordHash: await hashPassword(newPassword),
+      sessionVersion: { increment: 1 },
+    },
   });
+
+  await resetRateLimit(CHANGE_PASSWORD_RATE_LIMIT_SCOPE, userId, rateLimits);
 }
 
 export async function updateProfile(
@@ -678,6 +784,7 @@ export async function updateProfile(
       theme: input.theme,
       layoutSections: [...new Set(input.layoutSections)],
       customCss: nullable(input.customCss),
+      private: input.private,
     },
     select: {
       id: true,
@@ -690,6 +797,7 @@ export async function updateProfile(
       theme: true,
       layoutSections: true,
       customCss: true,
+      private: true,
     },
   });
 }
@@ -700,4 +808,32 @@ export async function banUser(userId: string, users: UserDelegate = db.user) {
     data: { banned: true },
     select: { id: true, username: true, banned: true },
   });
+}
+
+type AdminActionAuditDelegate = Pick<PrismaClient["adminActionAudit"], "create">;
+
+export async function logAdminAction(
+  actorId: string,
+  targetUserId: string,
+  action: string,
+  auditLog: AdminActionAuditDelegate = db.adminActionAudit,
+) {
+  await auditLog.create({ data: { actorId, targetUserId, action } });
+}
+
+export async function adminVerifyEmail(
+  userId: string,
+  users: UserDelegate = db.user,
+) {
+  const user = await users.findUnique({
+    where: { id: userId },
+    select: { id: true, emailVerified: true },
+  });
+  if (!user) return null;
+  if (user.emailVerified) return { id: user.id, emailVerified: true as const };
+  await users.update({
+    where: { id: userId },
+    data: { emailVerified: new Date() },
+  });
+  return { id: user.id, emailVerified: true as const };
 }

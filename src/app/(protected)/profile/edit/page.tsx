@@ -8,17 +8,14 @@ type EditProfilePageProps = {
 };
 type LinkValue = { label: string; url: string };
 
-function links(value: unknown) {
-  if (!Array.isArray(value)) return "";
-  return value
-    .filter(
-      (item): item is LinkValue =>
-        isRecord(item) &&
-        typeof item.label === "string" &&
-        typeof item.url === "string",
-    )
-    .map((item) => `${item.label} | ${item.url}`)
-    .join("\n");
+function links(value: unknown): LinkValue[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (item): item is LinkValue =>
+      isRecord(item) &&
+      typeof item.label === "string" &&
+      typeof item.url === "string",
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -59,7 +56,9 @@ export default async function EditProfilePage({
           links: links(profile.links),
           theme: profile.theme,
           sections: sections(profile.layoutSections),
+          layoutMode: profile.layoutMode,
           customCss: profile.customCss ?? "",
+          private: profile.private,
         }}
       />
     </section>

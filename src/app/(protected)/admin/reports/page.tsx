@@ -15,7 +15,8 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
 export default async function ReportsPage() {
   const session = await auth();
   if (session?.user.role !== Role.ADMIN) forbidden();
-  const reports = await (await getServerCaller()).moderation.listReports();
+  const reportPage = await (await getServerCaller()).moderation.listReports();
+  const reports = reportPage.items;
 
   return (
     <section className="mx-auto w-full max-w-6xl px-6 py-14">
@@ -67,8 +68,11 @@ export default async function ReportsPage() {
                       )}
                     </p>
                     <p className="text-faint mt-1 font-mono text-xs break-words">
-                      Reported by @{report.reporter.username} ·{" "}
-                      {dateFormatter.format(report.createdAt)}
+                      Reported by{" "}
+                      {report.reporter
+                        ? `@${report.reporter.username}`
+                        : "a deleted user"}{" "}
+                      · {dateFormatter.format(report.createdAt)}
                     </p>
                     <p className="text-muted mt-4 break-words whitespace-pre-wrap">
                       {report.reason ?? "No reason supplied."}

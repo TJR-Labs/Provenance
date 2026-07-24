@@ -2,6 +2,12 @@ import type { PrismaClient } from "../../generated/prisma";
 import { z } from "zod";
 
 import { db } from "~/server/db";
+import {
+  ADMIN_PAGE_SIZE,
+  clampPageSize,
+  createdAtIdCursorWhere,
+  pageFromRows,
+} from "~/server/pagination";
 
 type ReportDelegate = Pick<PrismaClient["report"], "create" | "findMany">;
 type UserDelegate = Pick<PrismaClient["user"], "findUnique">;
@@ -49,8 +55,13 @@ export async function createReport(
   });
 }
 
-export function listReports(reports: ReportDelegate = db.report) {
-  return reports.findMany({
+export async function listReports(
+  reports: ReportDelegate = db.report,
+  pagination: { cursor?: string; limit?: number } = {},
+) {
+  const pageSize = clampPageSize(pagination.limit, ADMIN_PAGE_SIZE);
+  const rows = await reports.findMany({
+    where: createdAtIdCursorWhere(pagination.cursor),
     include: {
       reporter: { select: { username: true } },
       project: {
@@ -60,8 +71,10 @@ export function listReports(reports: ReportDelegate = db.report) {
       },
       reportedUser: { select: { id: true, username: true, banned: true } },
     },
-    orderBy: { createdAt: "desc" },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: pageSize + 1,
   });
+  return pageFromRows(rows, pageSize);
 }
 
 export function removeReportedProject(

@@ -1,13 +1,17 @@
 import { AuthError } from "next-auth";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { signIn } from "~/server/auth";
 import { OAuthButtons } from "../oauth-buttons";
+import { safeReturnTo } from "../safe-return-to";
 
 type LoginPageProps = {
   searchParams: Promise<{
     error?: string;
     created?: string;
+    emailFailed?: string;
+    reset?: string;
     returnTo?: string;
   }>;
 };
@@ -15,10 +19,7 @@ type LoginPageProps = {
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const params = await searchParams;
   const showError = Boolean(params.error);
-  const returnTo =
-    params.returnTo?.startsWith("/") && !params.returnTo.startsWith("//")
-      ? params.returnTo
-      : "/";
+  const returnTo = safeReturnTo(params.returnTo);
 
   async function login(formData: FormData) {
     "use server";
@@ -60,6 +61,20 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             Account created. You can log in now.
           </p>
         ) : null}
+        {params.emailFailed ? (
+          <p
+            role="alert"
+            className="border-danger-line bg-danger-surface text-danger mt-6 rounded-md border px-4 py-3 text-sm"
+          >
+            Your account was created, but we couldn&apos;t send a
+            verification email.
+          </p>
+        ) : null}
+        {params.reset ? (
+          <p className="border-success-line bg-success-surface text-success mt-6 rounded-md border px-4 py-3 text-sm">
+            Password reset. Log in with your new password.
+          </p>
+        ) : null}
 
         {showError ? (
           <p
@@ -83,7 +98,15 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             />
           </label>
           <label className="text-ink block text-sm font-medium">
-            Password
+            <span className="flex items-center justify-between gap-4">
+              <span>Password</span>
+              <Link
+                href="/forgot-password"
+                className="text-accent hover:text-accent-strong text-xs font-semibold"
+              >
+                Forgot password?
+              </Link>
+            </span>
             <input
               name="password"
               type="password"

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { GridLayoutRenderer } from "~/app/grid-layout-renderer";
 import { ProjectMedia } from "~/app/project-media";
 import { reportProjectAction } from "~/app/report-actions";
 import { safeExternalUrl } from "~/app/safe-external-url";
@@ -33,6 +34,7 @@ export default async function ProjectPage({
       : project.layout === "writeup"
         ? "space-y-8"
         : "grid gap-5 sm:grid-cols-2";
+  const gridLayout = "gridLayout" in project ? project.gridLayout : undefined;
 
   return (
     <article className="mx-auto w-full max-w-5xl px-6 py-14">
@@ -65,54 +67,65 @@ export default async function ProjectPage({
         </Link>
       ) : null}
 
-      <p className="text-ink mt-10 text-lg leading-8 break-words whitespace-pre-wrap">
-        {project.description}
-      </p>
-
-      {project.media.length ? (
-        <div className={`mt-10 ${gridClass}`}>
-          {project.media.map((media) => (
-            <div
-              key={media.id}
-              className="border-line bg-surface min-h-56 overflow-hidden rounded-lg border"
-            >
-              <ProjectMedia media={media} title={project.title} />
-            </div>
-          ))}
-        </div>
+      {gridLayout ? (
+        <GridLayoutRenderer
+          blocks={gridLayout.blocks}
+          projects={gridLayout.projects}
+          mode="responsive"
+          ownerView={session?.user.id === project.user.id}
+        />
       ) : (
-        <div className="border-line-strong mt-10 rounded-lg border border-dashed px-6 py-12 text-center">
-          <p className="text-faint font-mono text-xs tracking-[0.14em] uppercase">
-            No media on record
+        <>
+          <p className="text-ink mt-10 text-lg leading-8 break-words whitespace-pre-wrap">
+            {project.description}
           </p>
-          <p className="text-muted mt-3">
-            This project tells its story without media.
-          </p>
-        </div>
-      )}
 
-      {project.links.length ? (
-        <div className="mt-10 flex flex-wrap gap-3">
-          {project.links.map((link) => {
-            const href = safeExternalUrl(link);
-            return href ? (
-              <a
-                key={link}
-                href={href}
-                target="_blank"
-                rel="noreferrer"
-                className="bg-accent text-on-accent hover:bg-accent-strong rounded-md px-4 py-2 font-semibold transition-colors"
-              >
-                Open project link
-              </a>
-            ) : (
-              <span key={link} className="text-faint break-all">
-                {link}
-              </span>
-            );
-          })}
-        </div>
-      ) : null}
+          {project.media.length ? (
+            <div className={`mt-10 ${gridClass}`}>
+              {project.media.map((media) => (
+                <div
+                  key={media.id}
+                  className="border-line bg-surface min-h-56 overflow-hidden rounded-lg border"
+                >
+                  <ProjectMedia media={media} title={project.title} />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="border-line-strong mt-10 rounded-lg border border-dashed px-6 py-12 text-center">
+              <p className="text-faint font-mono text-xs tracking-[0.14em] uppercase">
+                No media on record
+              </p>
+              <p className="text-muted mt-3">
+                This project tells its story without media.
+              </p>
+            </div>
+          )}
+
+          {project.links.length ? (
+            <div className="mt-10 flex flex-wrap gap-3">
+              {project.links.map((link) => {
+                const href = safeExternalUrl(link);
+                return href ? (
+                  <a
+                    key={link}
+                    href={href}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="bg-accent text-on-accent hover:bg-accent-strong rounded-md px-4 py-2 font-semibold transition-colors"
+                  >
+                    Open project link
+                  </a>
+                ) : (
+                  <span key={link} className="text-faint break-all">
+                    {link}
+                  </span>
+                );
+              })}
+            </div>
+          ) : null}
+        </>
+      )}
 
       <div className="mt-8 flex flex-wrap gap-x-4 gap-y-2">
         {project.hashtags.map((tag) => (
