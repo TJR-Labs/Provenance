@@ -33,6 +33,7 @@
   },
   "dependencies": {
     "@prisma/client": "^6.6.0",
+    "@react-email/render": "^1.4.0",
     "@supabase/supabase-js": "^2.110.6",
     "@t3-oss/env-nextjs": "^0.12.0",
     "@tanstack/react-query": "^5.69.0",
@@ -42,9 +43,9 @@
     "bcryptjs": "^3.0.3",
     "next": "^15.5.21",
     "next-auth": "5.0.0-beta.32",
-    "posthog-js": "^1.405.2",
     "postcss": "^8.5.19",
     "postcss-selector-parser": "^7.1.4",
+    "posthog-js": "^1.405.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "resend": "^6.1.0",
