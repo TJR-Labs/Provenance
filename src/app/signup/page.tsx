@@ -45,7 +45,7 @@ export default async function SignupPage({ searchParams }: SignupPageProps) {
     }
 
     if (!emailSent) {
-      redirect("/login?created=1&emailFailed=1");
+      redirect("/login?created=1&emailFailed=1&ph_event=signup_completed");
     }
 
     let signInFailed = false;
@@ -53,7 +53,7 @@ export default async function SignupPage({ searchParams }: SignupPageProps) {
       await signIn("credentials", {
         username,
         password,
-        redirectTo: `/${username}`,
+        redirectTo: `/${username}?ph_event=signup_completed`,
       });
     } catch (error) {
       if (error instanceof AuthError) {
@@ -64,7 +64,7 @@ export default async function SignupPage({ searchParams }: SignupPageProps) {
     }
 
     if (signInFailed) {
-      redirect("/login?created=1");
+      redirect("/login?created=1&ph_event=signup_completed");
     }
   }
 

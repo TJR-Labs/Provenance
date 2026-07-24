@@ -109,6 +109,11 @@ const mocks = vi.hoisted(() => ({
   setResourceRemovedMutate:
     vi.fn<(input: { id: string; removed: boolean }) => void>(),
   routerPush: vi.fn<(href: string) => void>(),
+  posthogCapture: vi.fn<(event: string) => void>(),
+}));
+
+vi.mock("posthog-js", () => ({
+  default: { __loaded: true, capture: mocks.posthogCapture },
 }));
 
 vi.mock("~/trpc/react", () => ({
@@ -1920,6 +1925,24 @@ describe("profile content in the Edit popup", () => {
         profile: EditorStateData["snapshot"]["profile"];
       };
       expect(saved.profile.displayName).toBe("Autosaved Name");
+      expect(mocks.posthogCapture).toHaveBeenCalledOnce();
+      expect(mocks.posthogCapture).toHaveBeenCalledWith("canvas_edited");
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Open menu for Name" }),
+      );
+      fireEvent.click(screen.getByRole("menuitem", { name: "Edit" }));
+      fireEvent.change(screen.getByLabelText("Display name"), {
+        target: { value: "Autosaved Again" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Close edit popup" }));
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30_000);
+      });
+
+      expect(mocks.saveDraftMutateAsync).toHaveBeenCalledTimes(2);
+      expect(mocks.posthogCapture).toHaveBeenCalledOnce();
     } finally {
       vi.useRealTimers();
     }

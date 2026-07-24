@@ -115,7 +115,7 @@ describe("signup server action", () => {
     expect(mocks.signIn).toHaveBeenCalledWith("credentials", {
       username: "alice",
       password: "supersecret",
-      redirectTo: "/alice",
+      redirectTo: "/alice?ph_event=signup_completed",
     });
     expect(mocks.redirect).not.toHaveBeenCalled();
   });
@@ -145,7 +145,7 @@ describe("signup server action", () => {
 
     const action = await getSignupAction();
     await expect(action(formOf(validFields))).rejects.toThrow(
-      "REDIRECT:/login?created=1&emailFailed=1",
+      "REDIRECT:/login?created=1&emailFailed=1&ph_event=signup_completed",
     );
 
     expect(mocks.signIn).not.toHaveBeenCalled();
@@ -161,10 +161,12 @@ describe("signup server action", () => {
 
     const action = await getSignupAction();
     await expect(action(formOf(validFields))).rejects.toThrow(
-      "REDIRECT:/login?created=1",
+      "REDIRECT:/login?created=1&ph_event=signup_completed",
     );
 
     expect(mocks.signIn).toHaveBeenCalledOnce();
-    expect(mocks.redirect).toHaveBeenCalledWith("/login?created=1");
+    expect(mocks.redirect).toHaveBeenCalledWith(
+      "/login?created=1&ph_event=signup_completed",
+    );
   });
 });

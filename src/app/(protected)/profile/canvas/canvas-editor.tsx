@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import posthog from "posthog-js";
 import {
   useCallback,
   useEffect,
@@ -513,6 +514,7 @@ export function CanvasEditor({
   selectionRef.current = selection;
   const revisionRef = useRef<number | null>(null);
   revisionRef.current = revision;
+  const hasTrackedFirstSaveRef = useRef(false);
   const saveDraftRef = useRef(saveDraft.mutateAsync);
   saveDraftRef.current = saveDraft.mutateAsync;
   const surfaceRef = useRef<HTMLDivElement | null>(null);
@@ -657,6 +659,10 @@ export function CanvasEditor({
     if (!payload) return;
     try {
       const result = await saveDraftRef.current(payload);
+      if (posthog.__loaded && !hasTrackedFirstSaveRef.current) {
+        posthog.capture("canvas_edited");
+        hasTrackedFirstSaveRef.current = true;
+      }
       reconcile(snapshot, result);
     } catch {
       // Surfaced via saveDraft.isError; the next change re-marks dirty.
