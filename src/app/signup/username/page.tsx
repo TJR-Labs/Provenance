@@ -49,7 +49,7 @@ export default async function UsernamePage({
 
     await signIn("credentials", {
       oauthSignupToken: token,
-      redirectTo: "/",
+      redirectTo: "/onboarding/mediums",
     });
   }
 

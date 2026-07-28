@@ -3,6 +3,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { classifyProjectMedia } from "~/lib/project-media";
+import {
+  projectStatuses,
+  projectStatusLabels,
+} from "~/lib/project-status";
 import { getServerCaller } from "~/server/api/caller";
 import { auth } from "~/server/auth";
 import { categories, categoryLabels } from "~/server/categories";
@@ -66,11 +70,16 @@ export default async function EditProjectPage({
           value,
           label: categoryLabels[value],
         }))}
+        statuses={projectStatuses.map((value) => ({
+          value,
+          label: projectStatusLabels[value],
+        }))}
         error={query.error}
         initial={{
           title: project.title,
           description: project.description,
           category: project.category,
+          status: project.status,
           hashtags: project.hashtags,
           links: project.links,
           layout: project.layout,

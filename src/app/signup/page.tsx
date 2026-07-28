@@ -53,7 +53,7 @@ export default async function SignupPage({ searchParams }: SignupPageProps) {
       await signIn("credentials", {
         username,
         password,
-        redirectTo: `/${username}?ph_event=signup_completed`,
+        redirectTo: "/onboarding/mediums?ph_event=signup_completed",
       });
     } catch (error) {
       if (error instanceof AuthError) {

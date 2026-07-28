@@ -2,7 +2,11 @@
 
 import { redirect } from "next/navigation";
 
-import { Category, MediaKind } from "../../../../generated/prisma";
+import {
+  Category,
+  MediaKind,
+  ProjectStatus,
+} from "../../../../generated/prisma";
 import { getServerCaller } from "~/server/api/caller";
 import { auth } from "~/server/auth";
 import { projectLayouts } from "~/server/projects";
@@ -30,11 +34,14 @@ export async function saveProjectAction(
   const category = Object.values(Category).find(
     (item) => item === value(formData, "category"),
   );
+  const status = Object.values(ProjectStatus).find(
+    (item) => item === value(formData, "status"),
+  );
   const layout = projectLayouts.find(
     (item) => item === value(formData, "layout"),
   );
   const returnTo = projectId ? `/projects/${projectId}/edit` : "/projects/new";
-  if (!category || !layout)
+  if (!category || !layout || !status)
     redirect(`${returnTo}?error=Invalid%20project%20options.`);
 
   let media: { kind: MediaKind; url: string; mimeType?: string | null }[] = [];
@@ -68,6 +75,7 @@ export async function saveProjectAction(
     title: value(formData, "title"),
     description: value(formData, "description"),
     category,
+    status,
     hashtags: lines(value(formData, "hashtags")),
     links: lines(value(formData, "links")),
     layout,

@@ -3,7 +3,7 @@
  *
  * Exercises the real signup server action closure from page.tsx end-to-end
  * across its four control-flow branches: successful signup establishes a
- * NextAuth credentials session and redirects to the new user's own profile;
+ * NextAuth credentials session and redirects to the onboarding wizard;
  * validation failures redirect to /signup?error with no sign-in; a real
  * AuthError from signIn falls back to /login?created=1; and the NEXT_REDIRECT
  * that a successful signIn throws propagates instead of being swallowed.
@@ -90,7 +90,7 @@ beforeEach(() => {
 });
 
 describe("signup server action", () => {
-  it("signs the new user in and redirects to their own profile on success", async () => {
+  it("signs the new user in and redirects to onboarding on success", async () => {
     mocks.signup.mockResolvedValue({
       id: "user-1",
       username: "alice",
@@ -111,11 +111,11 @@ describe("signup server action", () => {
       password: "supersecret",
     });
     // Reuses the credentials path with the returned (lowercased) username and
-    // redirects to /<username>, not Discover or /login.
+    // redirects to onboarding, not Discover or /login.
     expect(mocks.signIn).toHaveBeenCalledWith("credentials", {
       username: "alice",
       password: "supersecret",
-      redirectTo: "/alice?ph_event=signup_completed",
+      redirectTo: "/onboarding/mediums?ph_event=signup_completed",
     });
     expect(mocks.redirect).not.toHaveBeenCalled();
   });

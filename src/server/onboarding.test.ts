@@ -6,7 +6,8 @@ import { dismissOnboarding, getOnboardingChecklist } from "./onboarding";
 
 function databaseWithUser(user: {
   bio: string | null;
-  layoutMode: "GRID" | "CANVAS";
+  siteDraftSavedAt: Date | null;
+  sitePublishedAt: Date | null;
   onboardingDismissedAt: Date | null;
   _count: { projects: number };
 }) {
@@ -23,7 +24,8 @@ describe("getOnboardingChecklist", () => {
       "user-1",
       databaseWithUser({
         bio: null,
-        layoutMode: "GRID",
+        siteDraftSavedAt: null,
+        sitePublishedAt: null,
         onboardingDismissedAt: null,
         _count: { projects: 0 },
       }),
@@ -40,7 +42,8 @@ describe("getOnboardingChecklist", () => {
       "user-1",
       databaseWithUser({
         bio: "A short bio",
-        layoutMode: "CANVAS",
+        siteDraftSavedAt: new Date("2026-07-17T22:00:00.000Z"),
+        sitePublishedAt: null,
         onboardingDismissedAt: null,
         _count: { projects: 1 },
       }),
@@ -57,7 +60,8 @@ describe("getOnboardingChecklist", () => {
       "user-1",
       databaseWithUser({
         bio: "A short bio",
-        layoutMode: "CANVAS",
+        siteDraftSavedAt: new Date("2026-07-17T22:00:00.000Z"),
+        sitePublishedAt: null,
         onboardingDismissedAt: null,
         _count: { projects: 0 },
       }),
@@ -74,7 +78,8 @@ describe("getOnboardingChecklist", () => {
       "user-1",
       databaseWithUser({
         bio: null,
-        layoutMode: "GRID",
+        siteDraftSavedAt: null,
+        sitePublishedAt: null,
         onboardingDismissedAt: new Date("2026-07-17T23:00:00.000Z"),
         _count: { projects: 0 },
       }),
@@ -83,12 +88,13 @@ describe("getOnboardingChecklist", () => {
     expect(result.shouldShow).toBe(false);
   });
 
-  it("treats the default GRID mode as incomplete", async () => {
+  it("treats an unsaved site as incomplete", async () => {
     const result = await getOnboardingChecklist(
       "user-1",
       databaseWithUser({
         bio: "A short bio",
-        layoutMode: "GRID",
+        siteDraftSavedAt: null,
+        sitePublishedAt: null,
         onboardingDismissedAt: null,
         _count: { projects: 1 },
       }),

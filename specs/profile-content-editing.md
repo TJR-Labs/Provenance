@@ -9,7 +9,7 @@ pipe-delimited text format (`Label | https://url`, one per line) that the
 canvas editor's own new Link element already replaced with a proper form, and
 the Custom CSS field is a raw stylesheet textarea shown to every user with no
 indication it requires knowing CSS. The theme picker is also a blind choice —
-three named options with no preview.
+six named options with no preview.
 
 This spec brings the profile editor's content-editing surfaces up to the same
 bar the canvas editor's `LinkPanel` already set, and gates the CSS field
@@ -36,10 +36,10 @@ users do want it).
 4. The disclosure defaults to **expanded** when the signed-in user already has
    non-empty saved `customCss`, and **collapsed** when it's empty — so an
    existing customization is never hidden from the person who wrote it.
-5. Each option in the theme `<select>` (Default dark / Paper light / Indigo
-   studio) gains a visual indicator distinguishing it from the others — at
-   minimum a small labeled color swatch per option. A live preview pane is
-   welcome but not required.
+5. Each option in the theme `<select>` (Default dark / Editorial cream / Warm
+   black / Contact sheet / Broadsheet / Workbench) gains a visual indicator
+   distinguishing it from the others — at minimum a small labeled color
+   swatch per option. A live preview pane is welcome but not required.
 
 ## Constraints
 
@@ -47,8 +47,9 @@ users do want it).
   Prisma with Supabase Postgres, Tailwind CSS v4.
 - No change to the profile server action's accepted input shape, to
   `sanitizeCustomCss`, or to `safeExternalUrl` — reuse them as-is.
-- No change to `theme` storage (`User.theme: string`) or to the three
-  existing theme identifiers (`default`, `paper`, `studio`).
+- No change to `theme` storage (`User.theme: string`) or to the six existing
+  theme identifiers (`default`, `cream`, `warm-black`, `contact-sheet`,
+  `broadsheet`, `workbench`).
 - Swatches/preview must render correctly in both the app's light and dark
   viewer themes (the existing `ThemeToggle`), independent of which profile
   theme is selected.
@@ -81,6 +82,6 @@ users do want it).
       defaults to expanded only when the user already has saved custom CSS.
 - [ ] Custom CSS helper text includes one worked example.
 - [ ] Each theme option shows a visual swatch/preview distinguishing it from
-      the other two.
+      the other five.
 - [ ] `npm run build` and `npm test` pass with no regression to existing
       profile-edit tests.

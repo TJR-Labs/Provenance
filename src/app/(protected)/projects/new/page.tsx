@@ -1,3 +1,7 @@
+import {
+  projectStatuses,
+  projectStatusLabels,
+} from "~/lib/project-status";
 import { categories, categoryLabels } from "~/server/categories";
 import { saveProjectAction } from "../actions";
 import { ProjectForm } from "../project-form";
@@ -21,6 +25,10 @@ export default async function NewProjectPage({
         categories={categories.map((value) => ({
           value,
           label: categoryLabels[value],
+        }))}
+        statuses={projectStatuses.map((value) => ({
+          value,
+          label: projectStatusLabels[value],
         }))}
         error={error}
       />

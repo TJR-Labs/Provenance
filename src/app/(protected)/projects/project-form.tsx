@@ -13,11 +13,13 @@ type MediaItem = {
 type ProjectFormProps = {
   action: (formData: FormData) => void | Promise<void>;
   categories: { value: string; label: string }[];
+  statuses: { value: string; label: string }[];
   error?: string;
   initial?: {
     title: string;
     description: string;
     category: string;
+    status: string;
     hashtags: string[];
     links: string[];
     layout: string;
@@ -30,6 +32,7 @@ type ProjectFormProps = {
 export function ProjectForm({
   action,
   categories,
+  statuses,
   error,
   initial,
 }: ProjectFormProps) {
@@ -93,7 +96,7 @@ export function ProjectForm({
           className="border-line-strong bg-canvas text-ink focus:border-accent mt-2 block w-full rounded-md border px-3 py-2"
         />
       </label>
-      <div className="grid gap-5 sm:grid-cols-2">
+      <div className="grid gap-5 sm:grid-cols-3">
         <label className="text-ink block text-sm font-medium">
           Category
           <select
@@ -103,6 +106,21 @@ export function ProjectForm({
             className="border-line-strong bg-canvas text-ink mt-2 block w-full rounded-md border px-3 py-2"
           >
             {categories.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="text-ink block text-sm font-medium">
+          Status
+          <select
+            name="status"
+            required
+            defaultValue={initial?.status ?? statuses[0]?.value}
+            className="border-line-strong bg-canvas text-ink mt-2 block w-full rounded-md border px-3 py-2"
+          >
+            {statuses.map((item) => (
               <option key={item.value} value={item.value}>
                 {item.label}
               </option>
