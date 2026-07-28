@@ -1,5 +1,4 @@
 import { getServerCaller } from "~/server/api/caller";
-import { profileSections } from "~/server/users";
 import { updateProfileAction } from "./actions";
 import { ProfileForm } from "./profile-form";
 
@@ -20,13 +19,6 @@ function links(value: unknown): LinkValue[] {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
-}
-
-function sections(value: unknown) {
-  if (!Array.isArray(value)) return [...profileSections];
-  return value.filter((item): item is (typeof profileSections)[number] =>
-    profileSections.includes(item as (typeof profileSections)[number]),
-  );
 }
 
 export default async function EditProfilePage({
@@ -54,9 +46,6 @@ export default async function EditProfilePage({
           school: profile.school ?? "",
           avatarUrl: profile.avatarUrl ?? "",
           links: links(profile.links),
-          theme: profile.theme,
-          sections: sections(profile.layoutSections),
-          layoutMode: profile.layoutMode,
           customCss: profile.customCss ?? "",
           private: profile.private,
         }}

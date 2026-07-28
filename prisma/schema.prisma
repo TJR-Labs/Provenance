@@ -17,6 +17,13 @@ enum Role {
   ADMIN
 }
 
+enum ProjectStatus {
+  IDEA
+  BUILDING
+  SHIPPED
+  ARCHIVED
+}
+
 enum Category {
   SOFTWARE_ENGINEER
   MECHANICAL_ENGINEER
@@ -42,27 +49,28 @@ enum UploadIntentStatus {
   EXPIRED
 }
 
-enum LayoutMode {
-  GRID
-  CANVAS
-}
-
-enum CanvasElementType {
+enum SectionKind {
+  HERO
+  PROJECT_GRID
   ABOUT
+  BUILD_LOG
   LINKS
-  PROJECT
-  TEXT
-  IMAGE
-  LINK
-  AVATAR
-  NAME
-  USERNAME
-  CATEGORIES
 }
 
-enum CanvasElementState {
+enum SiteState {
   DRAFT
   PUBLISHED
+}
+
+enum BlockKind {
+  TEXT
+  IMAGE
+  GALLERY
+  EMBED
+  CODE
+  QUOTE
+  PROJECT
+  LINK
 }
 
 enum GridLayoutScope {
@@ -83,48 +91,41 @@ enum GridBlockType {
 }
 
 model User {
-  id                         String                   @id @default(cuid())
-  username                   String                   @unique
-  passwordHash               String?
-  email                      String?                  @unique
-  emailVerified              DateTime?
-  sessionVersion             Int                      @default(0)
-  role                       Role                     @default(USER)
-  displayName                String
-  bio                        String?
-  school                     String?
-  avatarUrl                  String?
-  links                      Json?
-  theme                      String                   @default("default")
-  canvasBackgroundColor      String?
-  canvasBackgroundImageUrl   String?
-  canvasBackgroundResourceId String?
-  canvasBackgroundResource   ImageResource?           @relation("BackgroundResource", fields: [canvasBackgroundResourceId], references: [id], onDelete: SetNull)
-  layoutSections             Json?
-  layoutMode                 LayoutMode               @default(GRID)
-  canvasDraftSavedAt         DateTime?
-  canvasPublishedAt          DateTime?
-  canvasDraftRevision        Int                      @default(0)
-  canvasDraftSnapshot        Json?
-  canvasHintDismissedAt      DateTime?
-  onboardingDismissedAt      DateTime?
-  customCss                  String?
-  banned                     Boolean                  @default(false)
-  private                    Boolean                  @default(false)
-  createdAt                  DateTime                 @default(now())
-  projects                   Project[]
-  reportsMade                Report[]                 @relation("ReportsMade")
-  reportsAgainst             Report[]                 @relation("ReportsAgainstUser")
-  accounts                   Account[]
-  oauthLinkIntents           OAuthLinkIntent[]
-  canvasElements             CanvasElement[]
-  imageResources             ImageResource[]
-  uploadIntents              UploadIntent[]
-  gridLayouts                GridLayout[]             @relation("OwnedGridLayouts")
-  passwordResetTokens        PasswordResetToken[]
-  emailVerificationTokens    EmailVerificationToken[]
+  id                      String                   @id @default(cuid())
+  username                String                   @unique
+  passwordHash            String?
+  email                   String?                  @unique
+  emailVerified           DateTime?
+  sessionVersion          Int                      @default(0)
+  role                    Role                     @default(USER)
+  displayName             String
+  bio                     String?
+  school                  String?
+  avatarUrl               String?
+  links                   Json?
+  siteStyleDraft          Json?
+  siteStylePublished      Json?
+  siteDraftRevision       Int                      @default(0)
+  siteDraftSavedAt        DateTime?
+  sitePublishedAt         DateTime?
+  onboardingDismissedAt   DateTime?
+  customCss               String?
+  banned                  Boolean                  @default(false)
+  private                 Boolean                  @default(false)
+  createdAt               DateTime                 @default(now())
+  projects                Project[]
+  devlogEntries           DevlogEntry[]
+  reportsMade             Report[]                 @relation("ReportsMade")
+  reportsAgainst          Report[]                 @relation("ReportsAgainstUser")
+  accounts                Account[]
+  oauthLinkIntents        OAuthLinkIntent[]
+  sections                Section[]
+  imageResources          ImageResource[]
+  uploadIntents           UploadIntent[]
+  gridLayouts             GridLayout[]             @relation("OwnedGridLayouts")
+  passwordResetTokens     PasswordResetToken[]
+  emailVerificationTokens EmailVerificationToken[]
 
-  @@index([canvasBackgroundResourceId])
   @@index([createdAt, id])
 }
 
@@ -276,24 +277,25 @@ model PendingStorageDeletion {
 }
 
 model Project {
-  id              String          @id @default(cuid())
+  id              String         @id @default(cuid())
   userId          String
-  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   title           String
   description     String
   category        Category
+  status          ProjectStatus  @default(BUILDING)
   hashtags        String[]
   links           String[]
-  layout          String          @default("default")
-  private         Boolean         @default(false)
-  excludeFromFeed Boolean         @default(false)
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  layout          String         @default("default")
+  private         Boolean        @default(false)
+  excludeFromFeed Boolean        @default(false)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
   media           ProjectMedia[]
   reports         Report[]
-  canvasElements  CanvasElement[]
+  blocks          Block[]
   gridLayouts     GridLayout[]
-  gridBlocks      GridBlock[]     @relation("GridBlockProject")
+  gridBlocks      GridBlock[]    @relation("GridBlockProject")
 
   @@unique([id, userId])
   @@index([userId])
@@ -346,64 +348,65 @@ model GridBlock {
   @@index([projectId])
 }
 
-model CanvasElement {
-  id                         String             @id @default(cuid())
-  userId                     String
-  user                       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  state                      CanvasElementState
-  type                       CanvasElementType
-  projectId                  String?
-  project                    Project?           @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  x                          Int
-  y                          Int
-  width                      Int
-  height                     Int
-  zIndex                     Int
-  locked                     Boolean            @default(false)
-  resourceId                 String?
-  resource                   ImageResource?     @relation(fields: [resourceId], references: [id], onDelete: SetNull)
-  textContent                String?
-  imageUrl                   String?
-  imageCaption               String?
-  linkLabel                  String?
-  linkUrl                    String?
-  textColor                  String?
-  backgroundColor            String?
-  fontFamily                 String?
-  avatarShape                String?
-  avatarZoom                 Int?
-  avatarOffsetX              Int?
-  avatarOffsetY              Int?
-  // Canvas-only overrides for a placed PROJECT element. Each is scoped to this
-  // one CanvasElement row and never touches the underlying Project record.
-  // Null = unset (fall back to the real project value). For hashtags, a Json
-  // column distinguishes unset (SQL NULL) from an explicit empty-list override
-  // (`[]`), which a nullable String[] cannot express.
-  projectTitleOverride       String?
-  projectDescriptionOverride String?
-  projectHashtagsOverride    Json?
-  cardLayout                 String?
-
-  @@index([userId, state])
-  @@index([resourceId])
-}
-
 model ImageResource {
-  id              String          @id @default(cuid())
+  id              String    @id @default(cuid())
   userId          String
-  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   url             String
   mimeType        String
   storageBucket   String?
   storagePath     String?
   storageByteSize Int?
-  createdAt       DateTime        @default(now())
+  createdAt       DateTime  @default(now())
   removedAt       DateTime?
-  elements        CanvasElement[]
-  backgroundUsers User[]          @relation("BackgroundResource")
+  blocks          Block[]
 
   @@index([userId, removedAt])
   @@index([storageBucket, storagePath])
+}
+
+model Section {
+  id      String      @id @default(cuid())
+  userId  String
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  state   SiteState
+  kind    SectionKind
+  order   Int
+  visible Boolean     @default(true)
+  blocks  Block[]
+
+  @@unique([userId, state, kind])
+  @@unique([userId, state, order])
+  @@index([userId, state])
+}
+
+model Block {
+  id               String         @id @default(cuid())
+  sectionId        String
+  section          Section        @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  key              String
+  order            Int
+  type             BlockKind
+  projectId        String?
+  project          Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  textContent      String?
+  imageUrl         String?
+  imageResourceId  String?
+  imageResource    ImageResource? @relation(fields: [imageResourceId], references: [id], onDelete: SetNull)
+  imageCaption     String?
+  galleryImages    Json?
+  embedUrl         String?
+  codeContent      String?
+  codeLanguage     String?
+  quoteText        String?
+  quoteAttribution String?
+  linkLabel        String?
+  linkUrl          String?
+
+  @@unique([sectionId, key])
+  @@unique([sectionId, order])
+  @@index([projectId])
+  @@index([imageResourceId])
 }
 
 model ProjectMedia {
@@ -421,6 +424,17 @@ model ProjectMedia {
   @@index([projectId])
   @@index([projectId, order, id])
   @@index([storageBucket, storagePath])
+}
+
+model DevlogEntry {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label     String
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
 }
 
 model Report {

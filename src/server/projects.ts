@@ -2,6 +2,7 @@ import {
   Category,
   MediaKind,
   Prisma,
+  ProjectStatus,
   type PrismaClient,
 } from "../../generated/prisma";
 import { z } from "zod";
@@ -29,7 +30,7 @@ type ProjectDelegate = Pick<
   "create" | "delete" | "findFirst" | "findMany" | "findUnique" | "update"
 >;
 type UserReader = Pick<PrismaClient["user"], "findUniqueOrThrow">;
-type CanvasElementReader = Pick<PrismaClient["canvasElement"], "findMany">;
+type BlockReader = Pick<PrismaClient["block"], "findMany">;
 type GridLayoutReader = Pick<PrismaClient["gridLayout"], "findFirst">;
 type PopularHashtagReader = Pick<PrismaClient, "$queryRaw">;
 
@@ -99,6 +100,7 @@ export const projectInputSchema = z.object({
   title: z.string().trim().min(1, "Title is required.").max(160),
   description: z.string().trim().min(1, "Description is required.").max(20_000),
   category: z.nativeEnum(Category),
+  status: z.nativeEnum(ProjectStatus).optional().default("BUILDING"),
   hashtags: z.array(z.string().trim().min(1).max(60)).max(30),
   links: z.array(z.string().trim().url()).max(20),
   layout: z.enum(projectLayouts),
@@ -142,6 +144,7 @@ export async function createProject(
         title: input.title,
         description: input.description,
         category: input.category,
+        status: input.status,
         hashtags: input.hashtags,
         links: input.links,
         layout: input.layout,
@@ -168,6 +171,7 @@ export async function createProject(
         title: input.title,
         description: input.description,
         category: input.category,
+        status: input.status,
         hashtags: input.hashtags,
         links: input.links,
         layout: input.layout,
@@ -299,6 +303,7 @@ function projectWriteData(
       title: input.title,
       description: input.description,
       category: input.category,
+      status: input.status,
       hashtags: input.hashtags,
       links: input.links,
       layout: input.layout,
@@ -571,14 +576,12 @@ export async function listPopularHashtags(
 }
 
 // Lists the signed-in user's own projects for the "My Work" hub, with
-// placed/unplaced-on-canvas status mirroring the canvas editor's Library
-// sidebar (src/server/canvas.ts's getCanvasEditorState resolves the same
-// draft-vs-published state before checking PROJECT placements).
+// placed/unplaced status mirrors the site editor's Project grid picker.
 export async function listMyProjects(
   userId: string,
   projects: ProjectDelegate = db.project,
   users: UserReader = db.user,
-  canvasElements: CanvasElementReader = db.canvasElement,
+  blocks: BlockReader = db.block,
   pagination: ProjectPagination = {},
 ) {
   const pageSize = clampPageSize(pagination.limit, PUBLIC_PROJECT_PAGE_SIZE);
@@ -589,6 +592,8 @@ export async function listMyProjects(
       select: {
         id: true,
         title: true,
+        status: true,
+        category: true,
         createdAt: true,
         media: {
           select: { url: true },
@@ -601,38 +606,43 @@ export async function listMyProjects(
     }),
     users.findUniqueOrThrow({
       where: { id: userId },
-      select: { canvasDraftSavedAt: true, canvasPublishedAt: true },
+      select: { siteDraftSavedAt: true, sitePublishedAt: true },
     }),
   ]);
 
   const hasNewerDraft =
-    user.canvasDraftSavedAt !== null &&
-    (user.canvasPublishedAt === null ||
-      user.canvasDraftSavedAt > user.canvasPublishedAt);
+    user.siteDraftSavedAt !== null &&
+    (user.sitePublishedAt === null ||
+      user.siteDraftSavedAt > user.sitePublishedAt);
   const state = hasNewerDraft ? "DRAFT" : "PUBLISHED";
   const page = pageFromRows(myProjects, pageSize, (project) => ({
     id: project.id,
     title: project.title,
+    status: project.status,
+    category: project.category,
     thumbnailUrl: project.media[0]?.url ?? null,
   }));
   const projectIds = page.items.map((project) => project.id);
 
-  const placedElements =
+  const placedBlocks =
     projectIds.length === 0 ||
-    (user.canvasDraftSavedAt === null && user.canvasPublishedAt === null)
+    (user.siteDraftSavedAt === null && user.sitePublishedAt === null)
       ? []
-      : await canvasElements.findMany({
+      : await blocks.findMany({
           where: {
-            userId,
-            state,
             type: "PROJECT",
             projectId: { in: projectIds },
+            section: {
+              userId,
+              state,
+              kind: "PROJECT_GRID",
+            },
           },
           select: { projectId: true },
         });
   const placedProjectIds = new Set(
-    placedElements.flatMap((element) =>
-      element.projectId ? [element.projectId] : [],
+    placedBlocks.flatMap((block) =>
+      block.projectId ? [block.projectId] : [],
     ),
   );
 

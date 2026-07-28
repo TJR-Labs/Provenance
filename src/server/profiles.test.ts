@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("~/server/db", () => ({ db: {} }));
 
 import { getPublicProfile } from "~/server/profiles";
-import { publicGridBlockSelect } from "~/server/grid-layouts";
 
 function profile(overrides: Record<string, unknown> = {}) {
   return {
@@ -15,9 +14,16 @@ function profile(overrides: Record<string, unknown> = {}) {
     school: null,
     avatarUrl: null,
     links: [],
-    theme: "default",
-    layoutSections: [],
-    layoutMode: "GRID",
+    siteStylePublished: {
+      typefacePairing: "archivo-plexmono",
+      colorBg: "#10100f",
+      colorText: "#f1eee6",
+      colorAccent: "#ed4b2a",
+      colorLine: "#3a3935",
+      cornerRadius: 10,
+      motionLevel: "subtle",
+    },
+    sitePublishedAt: null,
     customCss: null,
     projects: [],
     ...overrides,
@@ -36,11 +42,8 @@ function expectedFindFirst(projectWhere: unknown) {
       school: true,
       avatarUrl: true,
       links: true,
-      theme: true,
-      canvasBackgroundColor: true,
-      canvasBackgroundImageUrl: true,
-      layoutSections: true,
-      layoutMode: true,
+      siteStylePublished: true,
+      sitePublishedAt: true,
       customCss: true,
       projects: {
         where: projectWhere,
@@ -51,32 +54,65 @@ function expectedFindFirst(projectWhere: unknown) {
   };
 }
 
-function gridBlock(overrides: Record<string, unknown> = {}) {
+function textBlock() {
   return {
-    key: "block-1",
+    id: "block-text",
+    sectionId: "section-about",
+    type: "TEXT",
+    key: "text",
     order: 0,
-    type: "PROJECT",
-    x: 0,
-    y: 0,
-    width: 3,
-    height: 2,
-    projectId: "p1",
-    textContent: null,
+    projectId: null,
+    textContent: "<p>About Alice</p>",
     imageUrl: null,
-    imageMimeType: null,
-    imageAlt: null,
+    imageResourceId: null,
+    imageCaption: null,
+    galleryImages: null,
+    embedUrl: null,
+    codeContent: null,
+    codeLanguage: null,
+    quoteText: null,
+    quoteAttribution: null,
     linkLabel: null,
     linkUrl: null,
-    project: {
-      id: "p1",
-      title: "Current title",
-      description: "Current description",
-      private: false,
-      media: [
-        { url: "https://example.com/current.png", mimeType: "image/png" },
-      ],
-    },
-    ...overrides,
+    project: null,
+  };
+}
+
+function projectBlock(
+  id: string,
+  project: { id: string; private: boolean; media: unknown[] } | null,
+) {
+  return {
+    ...textBlock(),
+    id: `block-${id}`,
+    sectionId: "section-projects",
+    type: "PROJECT",
+    key: id,
+    projectId: id,
+    textContent: null,
+    project,
+  };
+}
+
+function sectionMocks(rows: unknown[] = []) {
+  return {
+    findMany: vi.fn().mockResolvedValue(rows),
+  };
+}
+
+function devlogMocks(rows: unknown[] = []) {
+  return {
+    findMany: vi.fn().mockResolvedValue(rows),
+  };
+}
+
+// getPublicProfile calls ensureSiteContent(profile.id, database) before
+// reading Section rows. Mocking section.findFirst to resolve truthy makes
+// ensureSiteContent short-circuit to "already seeded" without needing to
+// mock the user/transaction path these tests aren't exercising.
+function siteContentMocks() {
+  return {
+    section: { findFirst: vi.fn().mockResolvedValue({ id: "existing" }) },
   };
 }
 
@@ -86,289 +122,175 @@ describe("getPublicProfile", () => {
       findFirst: vi.fn().mockResolvedValue(profile({ private: true })),
     };
     const projects = { findMany: vi.fn().mockResolvedValue([]) };
-    const canvasElements = { findMany: vi.fn() };
+    const sections = sectionMocks();
+    const devlog = devlogMocks();
+    const database = siteContentMocks();
 
     await expect(
       getPublicProfile(
         "Alice",
         "other",
-        users as never,
-        projects as never,
-        canvasElements as never,
+        users,
+        projects,
+        sections,
+        devlog,
+        database as never,
       ),
     ).resolves.toEqual({ isPrivate: true });
     expect(projects.findMany).not.toHaveBeenCalled();
+    expect(sections.findMany).not.toHaveBeenCalled();
 
-    const ownerResult = await getPublicProfile(
+    await expect(
+      getPublicProfile(
+        "Alice",
+        "u1",
+        users,
+        projects,
+        sections,
+        devlog,
+        database as never,
+      ),
+    ).resolves.toMatchObject({
+      id: "u1",
+      private: true,
+      categories: [],
+      sections: [],
+    });
+  });
+
+  it("filters nested projects for visitors and retains private projects for the owner", async () => {
+    const users = { findFirst: vi.fn().mockResolvedValue(profile()) };
+    const projects = { findMany: vi.fn().mockResolvedValue([]) };
+    const sections = sectionMocks();
+    const devlog = devlogMocks();
+    const database = siteContentMocks();
+
+    await getPublicProfile(
+      "Alice",
+      null,
+      users,
+      projects,
+      sections,
+      devlog,
+      database as never,
+    );
+    expect(users.findFirst).toHaveBeenLastCalledWith(
+      expectedFindFirst({ private: false }),
+    );
+
+    await getPublicProfile(
       "Alice",
       "u1",
       users,
       projects,
-      canvasElements,
+      sections,
+      devlog,
+      database as never,
     );
-    expect(ownerResult).toMatchObject({
-      id: "u1",
-      private: true,
-      categories: [],
-    });
-  });
-
-  it("filters nested projects for non-owners", async () => {
-    const users = { findFirst: vi.fn().mockResolvedValue(profile()) };
-    const projects = { findMany: vi.fn().mockResolvedValue([]) };
-    const canvasElements = { findMany: vi.fn() };
-
-    await getPublicProfile("Alice", null, users, projects, canvasElements);
-
-    expect(users.findFirst).toHaveBeenCalledWith(
-      expectedFindFirst({ private: false }),
-    );
-  });
-
-  it("uses an owner-or-public nested filter so owners retain private projects", async () => {
-    const users = { findFirst: vi.fn().mockResolvedValue(profile()) };
-    const projects = { findMany: vi.fn().mockResolvedValue([]) };
-    const canvasElements = { findMany: vi.fn() };
-
-    await getPublicProfile("Alice", "u1", users, projects, canvasElements);
-
-    expect(users.findFirst).toHaveBeenCalledWith(
+    expect(users.findFirst).toHaveBeenLastCalledWith(
       expectedFindFirst({ OR: [{ userId: "u1" }, { private: false }] }),
     );
   });
 
-  it("drops private project cards from a non-owner canvas but keeps them for the owner", async () => {
-    const privateCard = {
-      id: "element-1",
-      type: "PROJECT",
-      project: { id: "p1", private: true, media: [] },
+  it("returns ordered published sections and filters private project blocks for visitors", async () => {
+    const publicProject = { id: "p1", private: false, media: [] };
+    const privateProject = { id: "p2", private: true, media: [] };
+    const rows = [
+      {
+        id: "section-projects",
+        userId: "u1",
+        state: "PUBLISHED",
+        kind: "PROJECT_GRID",
+        order: 1,
+        visible: true,
+        blocks: [
+          projectBlock("p1", publicProject),
+          projectBlock("p2", privateProject),
+          projectBlock("deleted", null),
+        ],
+      },
+      {
+        id: "section-about",
+        userId: "u1",
+        state: "PUBLISHED",
+        kind: "ABOUT",
+        order: 2,
+        visible: true,
+        blocks: [textBlock()],
+      },
+    ];
+    const users = { findFirst: vi.fn().mockResolvedValue(profile()) };
+    const projects = {
+      findMany: vi.fn().mockResolvedValue([{ category: "DESIGNER" }]),
     };
-    const publicText = { id: "element-2", type: "TEXT", project: null };
-    const users = {
-      findFirst: vi.fn().mockResolvedValue(profile({ layoutMode: "CANVAS" })),
-    };
-    const projects = { findMany: vi.fn().mockResolvedValue([]) };
-    const canvasElements = {
-      findMany: vi.fn().mockResolvedValue([privateCard, publicText]),
-    };
+    const sections = sectionMocks(rows);
+    const devlog = devlogMocks([
+      { id: "d1", label: "SHIPPED", body: "Cut v1." },
+    ]);
+    const database = siteContentMocks();
 
-    const visitorResult = await getPublicProfile(
+    const visitor = await getPublicProfile(
       "Alice",
       "other",
       users,
       projects,
-      canvasElements,
+      sections,
+      devlog,
+      database as never,
     );
-    expect(visitorResult).toMatchObject({ canvasElements: [publicText] });
-
-    const ownerResult = await getPublicProfile(
-      "Alice",
-      "u1",
-      users,
-      projects,
-      canvasElements,
-    );
-    expect(ownerResult).toMatchObject({
-      canvasElements: [privateCard, publicText],
+    expect(visitor).toMatchObject({
+      categories: ["DESIGNER"],
+      sections: [
+        { blocks: [{ projectId: "p1" }] },
+        { blocks: [{ type: "TEXT" }] },
+      ],
+      siteProjects: [{ id: "p1" }],
+      devlogEntries: [{ id: "d1", label: "SHIPPED" }],
     });
-  });
-
-  it("returns only a published Grid rendering payload without layout or owner metadata", async () => {
-    const users = { findFirst: vi.fn().mockResolvedValue(profile()) };
-    const projects = { findMany: vi.fn().mockResolvedValue([]) };
-    const canvasElements = { findMany: vi.fn() };
-    const block = gridBlock();
-    const gridLayouts = {
-      findFirst: vi.fn().mockResolvedValue({
-        id: "layout-1",
-        ownerId: "u1",
-        state: "PUBLISHED",
-        revision: 7,
-        blocks: [block],
-      }),
-    };
-
-    const result = await getPublicProfile(
-      "Alice",
-      null,
-      users,
-      projects,
-      canvasElements,
-      gridLayouts,
-    );
-
-    expect(gridLayouts.findFirst).toHaveBeenCalledWith({
-      where: { ownerId: "u1", scope: "PROFILE", state: "PUBLISHED" },
-      select: {
+    // Resolved projects are hoisted out of the block rows.
+    expect(
+      visitor && "sections" in visitor
+        ? visitor.sections[0]?.blocks[0]
+        : undefined,
+    ).not.toHaveProperty("project");
+    expect(sections.findMany).toHaveBeenCalledWith({
+      where: { userId: "u1", state: "PUBLISHED" },
+      orderBy: { order: "asc" },
+      include: {
         blocks: {
-          orderBy: [{ order: "asc" }, { key: "asc" }],
-          select: publicGridBlockSelect,
+          orderBy: { order: "asc" },
+          include: {
+            project: {
+              include: { media: { orderBy: { order: "asc" } } },
+            },
+          },
         },
       },
     });
-    expect(result).toMatchObject({
-      gridLayout: {
-        blocks: [
-          {
-            key: "block-1",
-            order: 0,
-            type: "PROJECT",
-            x: 0,
-            y: 0,
-            width: 3,
-            height: 2,
-            projectId: "p1",
-            textContent: null,
-            imageUrl: null,
-            imageMimeType: null,
-            imageAlt: null,
-            linkLabel: null,
-            linkUrl: null,
-          },
-        ],
-        projects: [
-          {
-            id: "p1",
-            title: "Current title",
-            description: "Current description",
-            private: false,
-            media: [
-              {
-                url: "https://example.com/current.png",
-                mimeType: "image/png",
-              },
-            ],
-          },
-        ],
-      },
-    });
-    if (!result || "isPrivate" in result || !result.gridLayout) {
-      throw new Error("Expected a public Grid payload.");
-    }
-    expect(Object.keys(result.gridLayout)).toEqual(["blocks", "projects"]);
-    expect(result.gridLayout).not.toHaveProperty("id");
-    expect(result.gridLayout).not.toHaveProperty("ownerId");
-    expect(result.gridLayout).not.toHaveProperty("state");
-    expect(result.gridLayout).not.toHaveProperty("revision");
-  });
 
-  it("applies referenced-project privacy and deletion immediately for viewers while retaining owner preview context", async () => {
-    const users = { findFirst: vi.fn().mockResolvedValue(profile()) };
-    const projects = { findMany: vi.fn().mockResolvedValue([]) };
-    const canvasElements = { findMany: vi.fn() };
-    const publicReference = gridBlock();
-    const privateReference = gridBlock({
-      project: {
-        id: "p1",
-        title: "Now private",
-        description: "Must not leak",
-        private: true,
-        media: [],
-      },
-    });
-    const deletedReference = gridBlock({ project: null });
-    const gridLayouts = {
-      findFirst: vi
-        .fn()
-        .mockResolvedValueOnce({ blocks: [publicReference] })
-        .mockResolvedValueOnce({ blocks: [privateReference] })
-        .mockResolvedValueOnce({ blocks: [privateReference] })
-        .mockResolvedValueOnce({ blocks: [deletedReference] })
-        .mockResolvedValueOnce({ blocks: [deletedReference] }),
-    };
-
-    const publicResult = await getPublicProfile(
-      "Alice",
-      "other",
-      users,
-      projects,
-      canvasElements,
-      gridLayouts,
-    );
-    expect(publicResult).toMatchObject({
-      gridLayout: { blocks: [{ projectId: "p1" }], projects: [{ id: "p1" }] },
-    });
-
-    const newlyPrivateResult = await getPublicProfile(
-      "Alice",
-      "other",
-      users,
-      projects,
-      canvasElements,
-      gridLayouts,
-    );
-    expect(newlyPrivateResult).toMatchObject({
-      gridLayout: { blocks: [], projects: [] },
-    });
-
-    const ownerPrivateResult = await getPublicProfile(
+    const owner = await getPublicProfile(
       "Alice",
       "u1",
       users,
       projects,
-      canvasElements,
-      gridLayouts,
+      sections,
+      devlog,
+      database as never,
     );
-    expect(ownerPrivateResult).toMatchObject({
-      gridLayout: {
-        blocks: [{ projectId: "p1" }],
-        projects: [{ id: "p1", private: true }],
-      },
+    expect(owner).toMatchObject({
+      sections: [
+        {
+          blocks: [
+            { projectId: "p1" },
+            { projectId: "p2" },
+            { projectId: "deleted" },
+          ],
+        },
+        { blocks: [{ type: "TEXT" }] },
+      ],
+      // The deleted project resolves to nothing, so the owner's renderer shows
+      // an "unavailable" placeholder for that block.
+      siteProjects: [{ id: "p1" }, { id: "p2" }],
     });
-
-    const ownerDeletedResult = await getPublicProfile(
-      "Alice",
-      "u1",
-      users,
-      projects,
-      canvasElements,
-      gridLayouts,
-    );
-    expect(ownerDeletedResult).toMatchObject({
-      gridLayout: { blocks: [{ projectId: "p1" }], projects: [] },
-    });
-
-    const viewerDeletedResult = await getPublicProfile(
-      "Alice",
-      "other",
-      users,
-      projects,
-      canvasElements,
-      gridLayouts,
-    );
-    expect(viewerDeletedResult).toMatchObject({
-      gridLayout: { blocks: [], projects: [] },
-    });
-  });
-
-  it("retains the legacy profile payload when no published Grid layout exists", async () => {
-    const users = {
-      findFirst: vi.fn().mockResolvedValue(
-        profile({
-          bio: "Legacy bio",
-          layoutSections: ["about", "projects"],
-          projects: [{ id: "legacy-project" }],
-        }),
-      ),
-    };
-    const projects = { findMany: vi.fn().mockResolvedValue([]) };
-    const canvasElements = { findMany: vi.fn() };
-    const gridLayouts = { findFirst: vi.fn().mockResolvedValue(null) };
-
-    const result = await getPublicProfile(
-      "Alice",
-      null,
-      users,
-      projects,
-      canvasElements,
-      gridLayouts,
-    );
-
-    expect(result).toMatchObject({
-      bio: "Legacy bio",
-      layoutSections: ["about", "projects"],
-      projects: [{ id: "legacy-project" }],
-    });
-    expect(result).not.toHaveProperty("gridLayout");
   });
 });

@@ -5,8 +5,6 @@ import { useRef, useState } from "react";
 import { safeExternalUrl } from "~/app/safe-external-url";
 import { uploadFileDirect } from "~/lib/direct-upload";
 
-type Section = "about" | "projects" | "links";
-type LayoutMode = "GRID" | "CANVAS";
 type ProfileLink = { label: string; url: string };
 type LinkRow = { id: number; label: string; url: string };
 
@@ -20,80 +18,10 @@ type ProfileFormProps = {
     school: string;
     avatarUrl: string;
     links: ProfileLink[];
-    theme: string;
-    sections: Section[];
-    layoutMode: LayoutMode;
     customCss: string;
     private: boolean;
   };
 };
-
-const labels: Record<Section, string> = {
-  about: "About",
-  projects: "Projects",
-  links: "Links",
-};
-
-// Fixed representative colors per profile theme (from the .profile-theme-*
-// token sets in globals.css). Hard-coded hex so the swatches render
-// identically regardless of the app's light/dark viewer theme.
-const themeOptions: {
-  value: string;
-  label: string;
-  bg: string;
-  accent: string;
-  ink: string;
-}[] = [
-  {
-    value: "default",
-    label: "Default dark",
-    bg: "#131714",
-    accent: "#5fc694",
-    ink: "#e9e7db",
-  },
-  {
-    value: "paper",
-    label: "Paper light",
-    bg: "#f6f1e6",
-    accent: "#7a4a1e",
-    ink: "#262218",
-  },
-  {
-    value: "studio",
-    label: "Indigo studio",
-    bg: "#171732",
-    accent: "#a5a1f0",
-    ink: "#e9e9f7",
-  },
-  {
-    value: "ember",
-    label: "Ember warm",
-    bg: "#17110e",
-    accent: "#f2864b",
-    ink: "#f2e6dc",
-  },
-  {
-    value: "rose",
-    label: "Rose blush",
-    bg: "#fbeef0",
-    accent: "#b02a5b",
-    ink: "#3a1f28",
-  },
-  {
-    value: "mist",
-    label: "Mist cool",
-    bg: "#eef2f5",
-    accent: "#0f7d8c",
-    ink: "#1c2a33",
-  },
-  {
-    value: "terminal",
-    label: "Terminal mono",
-    bg: "#000000",
-    accent: "#33e07a",
-    ink: "#d6ffe0",
-  },
-];
 
 const linkInputClass =
   "border-line-strong bg-canvas text-ink placeholder:text-faint focus:border-accent mt-2 block w-full rounded-md border px-3 py-2 text-sm";
@@ -104,11 +32,9 @@ export function ProfileForm({
   success,
   initial,
 }: ProfileFormProps) {
-  const [sections, setSections] = useState(initial.sections);
   const [avatarUrl, setAvatarUrl] = useState(initial.avatarUrl);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
-  const [theme, setTheme] = useState(initial.theme);
 
   // Editable Label+URL rows replace the old pipe-delimited textarea. Rows
   // carry a stable id so React keys and per-row errors survive reordering.
@@ -179,16 +105,6 @@ export function ProfileForm({
       return;
     }
     setLinkErrors({});
-  }
-
-  function move(index: number, direction: -1 | 1) {
-    setSections((items) => {
-      const target = index + direction;
-      if (target < 0 || target >= items.length) return items;
-      const next = [...items];
-      [next[index], next[target]] = [next[target]!, next[index]!];
-      return next;
-    });
   }
 
   async function upload(file: File) {
@@ -336,120 +252,6 @@ export function ProfileForm({
           Add link
         </button>
         <input type="hidden" name="links" value={serializedLinks} />
-      </fieldset>
-
-      <div>
-        <label htmlFor="theme" className="text-ink block text-sm font-medium">
-          Theme
-        </label>
-        <select
-          id="theme"
-          name="theme"
-          value={theme}
-          onChange={(event) => setTheme(event.target.value)}
-          className="border-line-strong bg-canvas text-ink mt-2 block w-full rounded-md border px-3 py-2"
-        >
-          {themeOptions.map((option) => (
-            <option
-              key={option.value}
-              value={option.value}
-              style={{ backgroundColor: option.bg, color: option.ink }}
-            >
-              {option.label}
-            </option>
-          ))}
-        </select>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {themeOptions.map((option) => {
-            const selected = theme === option.value;
-            return (
-              <button
-                key={option.value}
-                type="button"
-                aria-pressed={selected}
-                onClick={() => setTheme(option.value)}
-                className={
-                  selected
-                    ? "border-accent bg-raised flex items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors"
-                    : "border-line-strong hover:bg-raised flex items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors"
-                }
-              >
-                <span
-                  aria-hidden
-                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded"
-                  style={{ backgroundColor: option.bg }}
-                >
-                  <span
-                    className="h-3 w-3 rounded-full"
-                    style={{ backgroundColor: option.accent }}
-                  />
-                </span>
-                <span className="text-ink">{option.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <fieldset>
-        <legend className="text-ink text-sm font-medium">
-          Profile sections
-        </legend>
-        <p className="text-muted mt-1 text-sm">
-          Choose which sections appear and reorder them.
-        </p>
-        <ol className="mt-3 space-y-2">
-          {sections.map((section, index) => (
-            <li
-              key={section}
-              className="border-line bg-canvas flex items-center gap-3 rounded-md border px-3 py-2"
-            >
-              <span className="text-ink flex-1">{labels[section]}</span>
-              <button
-                type="button"
-                onClick={() => move(index, -1)}
-                disabled={index === 0}
-                className="text-accent hover:text-accent-strong disabled:text-faint text-sm font-medium transition-colors"
-              >
-                Up
-              </button>
-              <button
-                type="button"
-                onClick={() => move(index, 1)}
-                disabled={index === sections.length - 1}
-                className="text-accent hover:text-accent-strong disabled:text-faint text-sm font-medium transition-colors"
-              >
-                Down
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  setSections((items) =>
-                    items.filter((item) => item !== section),
-                  )
-                }
-                className="text-danger text-sm font-medium underline-offset-4 hover:underline"
-              >
-                Hide
-              </button>
-            </li>
-          ))}
-        </ol>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {(Object.keys(labels) as Section[])
-            .filter((section) => !sections.includes(section))
-            .map((section) => (
-              <button
-                key={section}
-                type="button"
-                onClick={() => setSections((items) => [...items, section])}
-                className="border-line-strong text-muted hover:bg-raised hover:text-ink rounded-md border px-3 py-1.5 text-sm font-medium transition-colors"
-              >
-                Show {labels[section]}
-              </button>
-            ))}
-        </div>
-        <input type="hidden" name="sections" value={sections.join(",")} />
       </fieldset>
 
       <details

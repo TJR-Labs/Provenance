@@ -35,8 +35,6 @@ function validFields(overrides: Record<string, string> = {}) {
     school: "",
     avatarUrl: "",
     links: "",
-    theme: "default",
-    sections: "about,projects,links",
     customCss: "",
     ...overrides,
   };
@@ -50,27 +48,41 @@ describe("updateProfileAction", () => {
   it("redirects to the user's public profile with ?saved=1 on success", async () => {
     mocks.update.mockResolvedValue({ username: "ada" });
 
-    await expect(
-      updateProfileAction(formData(validFields())),
-    ).rejects.toThrow("NEXT_REDIRECT:/ada?saved=1");
+    await expect(updateProfileAction(formData(validFields()))).rejects.toThrow(
+      "NEXT_REDIRECT:/ada?saved=1",
+    );
 
     expect(mocks.update).toHaveBeenCalledTimes(1);
   });
 
-  it("redirects back to the editor with ?error= on invalid input, without saving", async () => {
+  it("does not send retired theme or section fields", async () => {
+    mocks.update.mockResolvedValue({ username: "ada" });
     await expect(
-      updateProfileAction(formData(validFields({ theme: "not-a-theme" }))),
-    ).rejects.toThrow(/^NEXT_REDIRECT:\/profile\/edit\?error=/);
+      updateProfileAction(
+        formData(
+          validFields({
+            theme: "not-a-theme",
+            sections: "projects",
+          }),
+        ),
+      ),
+    ).rejects.toThrow("NEXT_REDIRECT:/ada?saved=1");
 
-    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.update).toHaveBeenCalledWith({
+      displayName: "Ada",
+      bio: "",
+      school: "",
+      avatarUrl: "",
+      links: [],
+      customCss: "",
+      private: false,
+    });
   });
 
   it("redirects back to the editor with ?error= when the update itself fails", async () => {
     mocks.update.mockRejectedValue(new Error("Display name is required."));
 
-    await expect(
-      updateProfileAction(formData(validFields())),
-    ).rejects.toThrow(
+    await expect(updateProfileAction(formData(validFields()))).rejects.toThrow(
       `NEXT_REDIRECT:/profile/edit?error=${encodeURIComponent(
         "Display name is required.",
       )}`,

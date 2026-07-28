@@ -32,7 +32,6 @@ type Candidate = Pick<
 type ProfileMigrationResult = "migrated" | "already" | "oversized";
 type ProjectMigrationResult = "migrated" | "already" | "video" | "oversized";
 
-const PROFILE_SECTIONS = ["about", "projects", "links"] as const;
 const MINIMUM_SIZE: Record<
   GridBlock["type"],
   { width: number; height: number }
@@ -53,60 +52,6 @@ function emptyContent(): Omit<Candidate, "key" | "type"> {
     linkLabel: null,
     linkUrl: null,
   };
-}
-
-function isHttpUrl(value: string) {
-  try {
-    const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-
-function isUnknownArray(value: unknown): value is unknown[] {
-  return Array.isArray(value);
-}
-
-function readProfileLinks(
-  value: unknown,
-): Array<{ index: number; label: string; url: string }> {
-  if (!isUnknownArray(value)) return [];
-  return value.flatMap((item, index) => {
-    if (
-      typeof item !== "object" ||
-      item === null ||
-      !("label" in item) ||
-      !("url" in item)
-    ) {
-      return [];
-    }
-    const label = item.label;
-    const url = item.url;
-    if (
-      typeof label !== "string" ||
-      typeof url !== "string" ||
-      !label.trim() ||
-      !isHttpUrl(url)
-    ) {
-      return [];
-    }
-    return [{ index, label, url }];
-  });
-}
-
-function readProfileSections(
-  value: unknown,
-): Array<(typeof PROFILE_SECTIONS)[number]> {
-  if (!isUnknownArray(value)) return [...PROFILE_SECTIONS];
-  const seen = new Set<string>();
-  return value.filter(
-    (item): item is (typeof PROFILE_SECTIONS)[number] =>
-      typeof item === "string" &&
-      PROFILE_SECTIONS.includes(item as (typeof PROFILE_SECTIONS)[number]) &&
-      !seen.has(item) &&
-      Boolean(seen.add(item)),
-  );
 }
 
 function placeCandidates(candidates: Candidate[]): GridBlock[] {
@@ -147,88 +92,10 @@ async function migrateProfile(
   database: PrismaClient,
 ): Promise<ProfileMigrationResult> {
   if (await hasProfileLayout(userId, database)) return "already";
-
-  const profile = await database.user.findUnique({
-    where: { id: userId },
-    select: {
-      layoutMode: true,
-      bio: true,
-      links: true,
-      layoutSections: true,
-    },
-  });
-  if (profile?.layoutMode !== "GRID") return "already";
-
-  const projects = await database.project.findMany({
-    where: { userId },
-    orderBy: { createdAt: "desc" },
-    select: { id: true },
-  });
-  const links = readProfileLinks(profile.links);
-  const candidates: Candidate[] = [];
-
-  for (const section of readProfileSections(profile.layoutSections)) {
-    if (section === "about" && profile.bio?.trim()) {
-      candidates.push({
-        key: "legacy-profile-about",
-        type: "TEXT",
-        ...emptyContent(),
-        textContent: profile.bio,
-      });
-    }
-    if (section === "projects") {
-      for (const project of projects) {
-        candidates.push({
-          key: `legacy-profile-project-${project.id}`,
-          type: "PROJECT",
-          ...emptyContent(),
-          projectId: project.id,
-        });
-      }
-    }
-    if (section === "links") {
-      for (const link of links) {
-        candidates.push({
-          key: `legacy-profile-link-${link.index}`,
-          type: "LINK",
-          ...emptyContent(),
-          linkLabel: link.label,
-          linkUrl: link.url,
-        });
-      }
-    }
-  }
-
-  if (candidates.length > GRID_MAX_BLOCKS) return "oversized";
-  const blocks = placeCandidates(candidates);
-
-  return database.$transaction(async (transaction) => {
-    const existing = await transaction.gridLayout.findFirst({
-      where: { ownerId: userId, scope: "PROFILE" },
-      select: { id: true },
-    });
-    if (existing) return "already";
-
-    await transaction.gridLayout.create({
-      data: {
-        ownerId: userId,
-        projectId: null,
-        scope: "PROFILE",
-        state: "DRAFT",
-        blocks: { create: blocks },
-      },
-    });
-    await transaction.gridLayout.create({
-      data: {
-        ownerId: userId,
-        projectId: null,
-        scope: "PROFILE",
-        state: "PUBLISHED",
-        blocks: { create: blocks },
-      },
-    });
-    return "migrated";
-  });
+  // Profile-scope Grid layouts were replaced by Section/Block site content.
+  // Retain this entry point as an idempotent no-op for legacy callers while
+  // project-scope migration remains active below.
+  return "already";
 }
 
 async function migrateProject(
@@ -345,11 +212,7 @@ export async function migrateGridLayouts(
     skippedVideo: 0,
     skippedOversized: 0,
   };
-  const profiles = await database.user.findMany({
-    where: { layoutMode: "GRID" },
-    select: { id: true },
-    orderBy: { id: "asc" },
-  });
+  const profiles: { id: string }[] = [];
   const projects = await database.project.findMany({
     select: { id: true },
     orderBy: { id: "asc" },

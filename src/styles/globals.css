@@ -4,11 +4,11 @@
 
 @theme inline {
   --font-sans:
-    var(--font-spline-sans), ui-sans-serif, system-ui, sans-serif,
+    var(--font-schibsted-grotesk), ui-sans-serif, system-ui, sans-serif,
     "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
-  --font-display: var(--font-newsreader), Georgia, "Times New Roman", serif;
+  --font-display: var(--font-archivo), Georgia, "Times New Roman", serif;
   --font-mono:
-    var(--font-spline-mono), ui-monospace, SFMono-Regular, Menlo, Consolas,
+    var(--font-ibm-plex-mono), ui-monospace, SFMono-Regular, Menlo, Consolas,
     monospace;
 
   --color-canvas: var(--pv-canvas);
@@ -46,18 +46,18 @@
 :root {
   color-scheme: light;
 
-  --pv-canvas: #f3f3ed;
-  --pv-surface: #fbfbf8;
-  --pv-raised: #e9eae1;
-  --pv-ink: #21261f;
-  --pv-muted: #4e574e;
-  --pv-faint: #667066;
-  --pv-line: #dddfd3;
-  --pv-line-strong: #b4baaa;
-  --pv-accent: #20674c;
-  --pv-accent-strong: #174f3a;
-  --pv-on-accent: #f5f7f0;
-  --pv-brass: #8a5b22;
+  --pv-canvas: #f1eee6;
+  --pv-surface: #faf8f2;
+  --pv-raised: #e9e5d8;
+  --pv-ink: #17150f;
+  --pv-muted: #6b6459;
+  --pv-faint: #8a8375;
+  --pv-line: #e0dcd0;
+  --pv-line-strong: #c9c2b0;
+  --pv-accent: #ed4b2a;
+  --pv-accent-strong: #c93d20;
+  --pv-on-accent: #fdf9f2;
+  --pv-brass: #ed4b2a;
   --pv-danger: #a63b2a;
   --pv-danger-solid: #a03828;
   --pv-danger-hover: #8b2f20;
@@ -75,18 +75,18 @@
 [data-theme="dark"] {
   color-scheme: dark;
 
-  --pv-canvas: #131714;
-  --pv-surface: #1b201c;
-  --pv-raised: #252c26;
-  --pv-ink: #e9e7db;
-  --pv-muted: #a9b1a4;
-  --pv-faint: #859082;
-  --pv-line: #2a322b;
-  --pv-line-strong: #40493f;
-  --pv-accent: #5fc694;
-  --pv-accent-strong: #82d6ae;
-  --pv-on-accent: #0e2419;
-  --pv-brass: #cfa45e;
+  --pv-canvas: #10100f;
+  --pv-surface: #171716;
+  --pv-raised: #1d1d1a;
+  --pv-ink: #f1eee6;
+  --pv-muted: #bbb7ae;
+  --pv-faint: #7f7b73;
+  --pv-line: #2c2c29;
+  --pv-line-strong: #3a3935;
+  --pv-accent: #ed4b2a;
+  --pv-accent-strong: #ff6a45;
+  --pv-on-accent: #1f0e08;
+  --pv-brass: #ed4b2a;
   --pv-danger: #e28a77;
   --pv-danger-solid: #b04b36;
   --pv-danger-hover: #c25a43;
@@ -107,18 +107,18 @@
   :root:not([data-theme="light"]) {
     color-scheme: dark;
 
-    --pv-canvas: #131714;
-    --pv-surface: #1b201c;
-    --pv-raised: #252c26;
-    --pv-ink: #e9e7db;
-    --pv-muted: #a9b1a4;
-    --pv-faint: #859082;
-    --pv-line: #2a322b;
-    --pv-line-strong: #40493f;
-    --pv-accent: #5fc694;
-    --pv-accent-strong: #82d6ae;
-    --pv-on-accent: #0e2419;
-    --pv-brass: #cfa45e;
+    --pv-canvas: #10100f;
+    --pv-surface: #171716;
+    --pv-raised: #1d1d1a;
+    --pv-ink: #f1eee6;
+    --pv-muted: #bbb7ae;
+    --pv-faint: #7f7b73;
+    --pv-line: #2c2c29;
+    --pv-line-strong: #3a3935;
+    --pv-accent: #ed4b2a;
+    --pv-accent-strong: #ff6a45;
+    --pv-on-accent: #1f0e08;
+    --pv-brass: #ed4b2a;
     --pv-danger: #e28a77;
     --pv-danger-solid: #b04b36;
     --pv-danger-hover: #c25a43;
@@ -138,21 +138,21 @@
  * Per-profile theme skins ([username] pages). These override the token set
  * for the profile subtree, so every nested component follows the skin.
  */
-.profile-theme-paper {
+.profile-theme-cream {
   color-scheme: light;
 
-  --pv-canvas: #f6f1e6;
-  --pv-surface: #fdfbf5;
-  --pv-raised: #ece5d4;
-  --pv-ink: #262218;
-  --pv-muted: #56503f;
-  --pv-faint: #6e6753;
-  --pv-line: #e0d8c4;
-  --pv-line-strong: #bfb49a;
-  --pv-accent: #7a4a1e;
-  --pv-accent-strong: #5f3812;
-  --pv-on-accent: #fbf6ec;
-  --pv-brass: #8a5b22;
+  --pv-canvas: #f1eee6;
+  --pv-surface: #faf8f2;
+  --pv-raised: #e9e5d8;
+  --pv-ink: #17150f;
+  --pv-muted: #6b6459;
+  --pv-faint: #8a8375;
+  --pv-line: #e0dcd0;
+  --pv-line-strong: #c9c2b0;
+  --pv-accent: #ed4b2a;
+  --pv-accent-strong: #c93d20;
+  --pv-on-accent: #fdf9f2;
+  --pv-brass: #ed4b2a;
   --pv-danger: #a63b2a;
   --pv-danger-solid: #a03828;
   --pv-danger-hover: #8b2f20;
@@ -167,137 +167,21 @@
   --pv-warning-line: #d9c08a;
 }
 
-.profile-theme-studio {
+.profile-theme-warm-black {
   color-scheme: dark;
 
-  --pv-canvas: #171732;
-  --pv-surface: #1f1f42;
-  --pv-raised: #2a2a52;
-  --pv-ink: #e9e9f7;
-  --pv-muted: #ababd6;
-  --pv-faint: #8a8abf;
-  --pv-line: #2c2c55;
-  --pv-line-strong: #44447a;
-  --pv-accent: #a5a1f0;
-  --pv-accent-strong: #bdbaf5;
-  --pv-on-accent: #14142e;
-  --pv-brass: #c9a96a;
-  --pv-danger: #e28a77;
-  --pv-danger-solid: #b04b36;
-  --pv-danger-hover: #c25a43;
-  --pv-on-danger: #fff3ee;
-  --pv-danger-surface: #2e1b26;
-  --pv-danger-line: #55303c;
-  --pv-success: #85d3a9;
-  --pv-success-surface: #152a2a;
-  --pv-success-line: #2c4a48;
-  --pv-warning: #ddb56a;
-  --pv-warning-surface: #2b2420;
-  --pv-warning-line: #51422e;
-}
-
-.profile-theme-ember {
-  color-scheme: dark;
-
-  --pv-canvas: #17110e;
-  --pv-surface: #1f1712;
-  --pv-raised: #2a201a;
-  --pv-ink: #f2e6dc;
-  --pv-muted: #c3ab9c;
-  --pv-faint: #97806f;
-  --pv-line: #2e231c;
-  --pv-line-strong: #4a382d;
-  --pv-accent: #f2864b;
-  --pv-accent-strong: #ff9d67;
-  --pv-on-accent: #2a1408;
-  --pv-brass: #d7a86a;
-  --pv-danger: #f0846f;
-  --pv-danger-solid: #c14a34;
-  --pv-danger-hover: #d15840;
-  --pv-on-danger: #fff2ee;
-  --pv-danger-surface: #33190f;
-  --pv-danger-line: #5a2e1e;
-  --pv-success: #86cf9a;
-  --pv-success-surface: #182619;
-  --pv-success-line: #2f4a34;
-  --pv-warning: #e6b45f;
-  --pv-warning-surface: #2c2211;
-  --pv-warning-line: #524022;
-}
-
-.profile-theme-rose {
-  color-scheme: light;
-
-  --pv-canvas: #fbeef0;
-  --pv-surface: #fff7f8;
-  --pv-raised: #f6dfe4;
-  --pv-ink: #3a1f28;
-  --pv-muted: #7a4b57;
-  --pv-faint: #9c6b76;
-  --pv-line: #f0d3da;
-  --pv-line-strong: #d8a9b5;
-  --pv-accent: #b02a5b;
-  --pv-accent-strong: #8f1f48;
-  --pv-on-accent: #fdeff3;
-  --pv-brass: #9c6b2f;
-  --pv-danger: #bf3a2c;
-  --pv-danger-solid: #a83322;
-  --pv-danger-hover: #8f2a1b;
-  --pv-on-danger: #fff3f0;
-  --pv-danger-surface: #f7ddd6;
-  --pv-danger-line: #e0b0a4;
-  --pv-success: #2f7350;
-  --pv-success-surface: #e0efe4;
-  --pv-success-line: #b5d3bf;
-  --pv-warning: #8a5a15;
-  --pv-warning-surface: #f6e6c9;
-  --pv-warning-line: #e0c58c;
-}
-
-.profile-theme-mist {
-  color-scheme: light;
-
-  --pv-canvas: #eef2f5;
-  --pv-surface: #f9fbfc;
-  --pv-raised: #dde6ec;
-  --pv-ink: #1c2a33;
-  --pv-muted: #4a616e;
-  --pv-faint: #6d8695;
-  --pv-line: #d5e0e7;
-  --pv-line-strong: #adc0cb;
-  --pv-accent: #0f7d8c;
-  --pv-accent-strong: #0a5f6b;
-  --pv-on-accent: #eafafc;
-  --pv-brass: #a86a2f;
-  --pv-danger: #b23a2c;
-  --pv-danger-solid: #9e3222;
-  --pv-danger-hover: #85291b;
-  --pv-on-danger: #fff3f0;
-  --pv-danger-surface: #f4ded8;
-  --pv-danger-line: #dcb2a7;
-  --pv-success: #1f7a54;
-  --pv-success-surface: #dcefe3;
-  --pv-success-line: #aed2bd;
-  --pv-warning: #8a5f14;
-  --pv-warning-surface: #f1e6c8;
-  --pv-warning-line: #d9c088;
-}
-
-.profile-theme-terminal {
-  color-scheme: dark;
-
-  --pv-canvas: #000000;
-  --pv-surface: #0a0f0a;
-  --pv-raised: #121a12;
-  --pv-ink: #d6ffe0;
-  --pv-muted: #6fbf8a;
-  --pv-faint: #4a8a63;
-  --pv-line: #16261a;
-  --pv-line-strong: #274a30;
-  --pv-accent: #33e07a;
-  --pv-accent-strong: #5cff9e;
-  --pv-on-accent: #05130a;
-  --pv-brass: #e6c14d;
+  --pv-canvas: #10100f;
+  --pv-surface: #171716;
+  --pv-raised: #1d1d1a;
+  --pv-ink: #f1eee6;
+  --pv-muted: #bbb7ae;
+  --pv-faint: #7f7b73;
+  --pv-line: #2c2c29;
+  --pv-line-strong: #3a3935;
+  --pv-accent: #ed4b2a;
+  --pv-accent-strong: #ff6a45;
+  --pv-on-accent: #1f0e08;
+  --pv-brass: #ed4b2a;
   --pv-danger: #ff7a6b;
   --pv-danger-solid: #c73a2a;
   --pv-danger-hover: #d94a38;
@@ -310,6 +194,136 @@
   --pv-warning: #e6c14d;
   --pv-warning-surface: #241f0a;
   --pv-warning-line: #47401a;
+}
+
+.profile-theme-contact-sheet {
+  color-scheme: dark;
+
+  --pv-canvas: #252522;
+  --pv-surface: #2d2d29;
+  --pv-raised: #363630;
+  --pv-ink: #f1eee6;
+  --pv-muted: #b9b5ac;
+  --pv-faint: #858178;
+  --pv-line: #3a3a35;
+  --pv-line-strong: #4a4943;
+  --pv-accent: #ed4b2a;
+  --pv-accent-strong: #ff6a45;
+  --pv-on-accent: #1f0e08;
+  --pv-brass: #ed4b2a;
+  --pv-danger: #ff7a6b;
+  --pv-danger-solid: #c73a2a;
+  --pv-danger-hover: #d94a38;
+  --pv-on-danger: #1a0806;
+  --pv-danger-surface: #2a0f0b;
+  --pv-danger-line: #4d2019;
+  --pv-success: #4ade80;
+  --pv-success-surface: #0c1f13;
+  --pv-success-line: #1f4029;
+  --pv-warning: #e6c14d;
+  --pv-warning-surface: #241f0a;
+  --pv-warning-line: #47401a;
+}
+
+.profile-theme-broadsheet {
+  color-scheme: light;
+
+  --pv-canvas: #e4e0d5;
+  --pv-surface: #efede6;
+  --pv-raised: #d8d3c6;
+  --pv-ink: #1a1916;
+  --pv-muted: #625e55;
+  --pv-faint: #817b6f;
+  --pv-line: #d2cdc0;
+  --pv-line-strong: #bab3a2;
+  --pv-accent: #ed4b2a;
+  --pv-accent-strong: #c93d20;
+  --pv-on-accent: #fdf9f2;
+  --pv-brass: #ed4b2a;
+  --pv-danger: #a63b2a;
+  --pv-danger-solid: #a03828;
+  --pv-danger-hover: #8b2f20;
+  --pv-on-danger: #fff6f2;
+  --pv-danger-surface: #f5e4da;
+  --pv-danger-line: #ddb5a5;
+  --pv-success: #23684a;
+  --pv-success-surface: #e5eddc;
+  --pv-success-line: #bccfad;
+  --pv-warning: #7a5416;
+  --pv-warning-surface: #f2e7cb;
+  --pv-warning-line: #d9c08a;
+}
+
+.profile-theme-workbench {
+  color-scheme: dark;
+
+  --pv-canvas: #1d1d1b;
+  --pv-surface: #252522;
+  --pv-raised: #2d2d29;
+  --pv-ink: #f1eee6;
+  --pv-muted: #b9b5ac;
+  --pv-faint: #817d75;
+  --pv-line: #353530;
+  --pv-line-strong: #45443e;
+  --pv-accent: #ed4b2a;
+  --pv-accent-strong: #ff6a45;
+  --pv-on-accent: #1f0e08;
+  --pv-brass: #ed4b2a;
+  --pv-danger: #ff7a6b;
+  --pv-danger-solid: #c73a2a;
+  --pv-danger-hover: #d94a38;
+  --pv-on-danger: #1a0806;
+  --pv-danger-surface: #2a0f0b;
+  --pv-danger-line: #4d2019;
+  --pv-success: #4ade80;
+  --pv-success-surface: #0c1f13;
+  --pv-success-line: #1f4029;
+  --pv-warning: #e6c14d;
+  --pv-warning-surface: #241f0a;
+  --pv-warning-line: #47401a;
+}
+
+/*
+ * Published site skin ([username] pages). The Editor's Styles panel stores four
+ * color roles plus a corner radius; SiteView writes them onto its wrapper as
+ * --site-* custom properties and this block remaps the app token set to them,
+ * so every nested component (ProjectCard included) follows the site's palette
+ * instead of the surrounding app chrome. Surfaces and the muted/faint text
+ * ramps are derived from the two supplied colors rather than stored separately.
+ */
+.site-view {
+  --pv-canvas: var(--site-bg);
+  --pv-surface: color-mix(in srgb, var(--site-text) 5%, var(--site-bg));
+  --pv-raised: color-mix(in srgb, var(--site-text) 10%, var(--site-bg));
+  --pv-ink: var(--site-text);
+  --pv-muted: color-mix(in srgb, var(--site-text) 72%, var(--site-bg));
+  --pv-faint: color-mix(in srgb, var(--site-text) 52%, var(--site-bg));
+  --pv-line: color-mix(in srgb, var(--site-line) 60%, var(--site-bg));
+  --pv-line-strong: var(--site-line);
+  --pv-accent: var(--site-accent);
+  --pv-accent-strong: var(--site-accent);
+  --pv-on-accent: var(--site-bg);
+  --pv-brass: var(--site-accent);
+}
+
+/* motionLevel: "full" — sections fade and rise in on entrance, staggered by
+   their position. "none" and "subtle" leave this off (subtle keeps only the
+   standard hover transitions applied in the markup). */
+.site-view[data-motion="full"] .site-section {
+  animation: site-section-enter 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--site-section-index, 0) * 90ms);
+}
+
+@keyframes site-section-enter {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 /* Accessibility floor: one visible keyboard focus treatment everywhere. */

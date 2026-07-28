@@ -5,9 +5,15 @@ import {
   protectedProcedure,
   publicProcedure,
 } from "~/server/api/trpc";
-import { dismissOnboarding, getOnboardingChecklist } from "~/server/onboarding";
+import {
+  dismissOnboarding,
+  getOnboardingChecklist,
+} from "~/server/onboarding";
 import { getPublicProfile } from "~/server/profiles";
-import { updateProfile, updateProfileInputSchema } from "~/server/users";
+import {
+  updateProfile,
+  updateProfileInputSchema,
+} from "~/server/users";
 
 export const profileRouter = createTRPCRouter({
   getByUsername: publicProcedure
@@ -18,8 +24,7 @@ export const profileRouter = createTRPCRouter({
         ctx.session?.user?.id ?? null,
         ctx.db.user,
         ctx.db.project,
-        ctx.db.canvasElement,
-        ctx.db.gridLayout,
+        ctx.db.section,
       ),
     ),
 
@@ -33,11 +38,11 @@ export const profileRouter = createTRPCRouter({
         school: true,
         avatarUrl: true,
         links: true,
-        theme: true,
-        canvasBackgroundColor: true,
-        canvasBackgroundImageUrl: true,
-        layoutSections: true,
-        layoutMode: true,
+        siteStyleDraft: true,
+        siteStylePublished: true,
+        siteDraftRevision: true,
+        sitePublishedAt: true,
+        siteDraftSavedAt: true,
         customCss: true,
         private: true,
       },

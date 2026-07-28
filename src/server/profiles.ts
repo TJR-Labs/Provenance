@@ -1,24 +1,26 @@
 import type { PrismaClient } from "../../generated/prisma";
 
 import { db } from "~/server/db";
-import {
-  publicGridBlockSelect,
-  serializePublicGridLayout,
-} from "~/server/grid-layouts";
 import { canViewProject } from "~/server/projects";
+import { ensureSiteContent } from "~/server/site-content-migration";
+import { resolveSiteStyle } from "~/server/site-editor";
 
 type UserReader = Pick<PrismaClient["user"], "findFirst">;
 type ProjectReader = Pick<PrismaClient["project"], "findMany">;
-type CanvasElementReader = Pick<PrismaClient["canvasElement"], "findMany">;
-type GridLayoutReader = Pick<PrismaClient["gridLayout"], "findFirst">;
+type SectionReader = Pick<PrismaClient["section"], "findMany">;
+type DevlogReader = Pick<PrismaClient["devlogEntry"], "findMany">;
+
+// The published Build log always shows the newest entries, never a curated set.
+const BUILD_LOG_ENTRY_LIMIT = 5;
 
 export async function getPublicProfile(
   username: string,
   viewerId: string | null,
   users: UserReader = db.user,
   projects: ProjectReader = db.project,
-  canvasElements: CanvasElementReader = db.canvasElement,
-  gridLayouts: GridLayoutReader | undefined = db.gridLayout,
+  sections: SectionReader = db.section,
+  devlogEntries: DevlogReader = db.devlogEntry,
+  database: PrismaClient = db,
 ) {
   const projectWhere = viewerId
     ? { OR: [{ userId: viewerId }, { private: false }] }
@@ -34,11 +36,8 @@ export async function getPublicProfile(
       school: true,
       avatarUrl: true,
       links: true,
-      theme: true,
-      canvasBackgroundColor: true,
-      canvasBackgroundImageUrl: true,
-      layoutSections: true,
-      layoutMode: true,
+      siteStylePublished: true,
+      sitePublishedAt: true,
       customCss: true,
       projects: {
         where: projectWhere,
@@ -55,56 +54,68 @@ export async function getPublicProfile(
     return { isPrivate: true as const };
   }
 
-  const [categories, publishedCanvasElements, publishedGridLayout] =
-    await Promise.all([
-      projects.findMany({
-        where: {
-          userId: profile.id,
-          ...(isOwner ? {} : { private: false }),
+  // Profiles that predate the site editor have no Section rows until the lazy
+  // backfill runs, so a visitor would otherwise see an empty page. This is
+  // idempotent (one existence check, no-op once seeded), so any viewer — not
+  // just the owner opening the editor — can trigger it.
+  await ensureSiteContent(profile.id, database);
+
+  const [categories, publishedSections, buildLogEntries] = await Promise.all([
+    projects.findMany({
+      where: {
+        userId: profile.id,
+        ...(isOwner ? {} : { private: false }),
+      },
+      distinct: ["category"],
+      select: { category: true },
+    }),
+    sections.findMany({
+      where: { userId: profile.id, state: "PUBLISHED" },
+      orderBy: { order: "asc" },
+      include: {
+        blocks: {
+          orderBy: { order: "asc" },
+          include: {
+            project: {
+              include: { media: { orderBy: { order: "asc" } } },
+            },
+          },
         },
-        distinct: ["category"],
-        select: { category: true },
-      }),
-      profile.layoutMode === "CANVAS"
-        ? canvasElements.findMany({
-            where: { userId: profile.id, state: "PUBLISHED" },
-            include: {
-              project: {
-                include: { media: { orderBy: { order: "asc" } } },
-              },
-            },
-            orderBy: { zIndex: "asc" },
-          })
-        : Promise.resolve([]),
-      profile.layoutMode === "GRID" && gridLayouts
-        ? gridLayouts.findFirst({
-            where: {
-              ownerId: profile.id,
-              scope: "PROFILE",
-              state: "PUBLISHED",
-            },
-            select: {
-              blocks: {
-                orderBy: [{ order: "asc" }, { key: "asc" }],
-                select: publicGridBlockSelect,
-              },
-            },
-          })
-        : Promise.resolve(null),
-    ]);
-  const visibleCanvasElements = publishedCanvasElements.filter(
-    (element) =>
-      element.type !== "PROJECT" ||
-      element.project === null ||
-      canViewProject(element.project, isOwner),
-  );
+      },
+    }),
+    devlogEntries.findMany({
+      where: { userId: profile.id },
+      orderBy: { createdAt: "desc" },
+      take: BUILD_LOG_ENTRY_LIMIT,
+      select: { id: true, label: true, body: true, createdAt: true },
+    }),
+  ]);
+
+  // A PROJECT block whose project is private or gone is dropped outright for a
+  // visitor; the owner keeps the block so the renderer can flag it as
+  // unavailable. The resolved projects are hoisted out of the block rows so the
+  // renderer resolves them by id (same shape as the grid renderer).
+  type SiteProject = NonNullable<
+    (typeof publishedSections)[number]["blocks"][number]["project"]
+  >;
+  const siteProjects = new Map<string, SiteProject>();
+  const visibleSections = publishedSections.map((section) => ({
+    ...section,
+    blocks: section.blocks.flatMap(({ project, ...block }) => {
+      if (block.type !== "PROJECT") return [block];
+      if (project === null) return isOwner ? [block] : [];
+      if (!canViewProject(project, isOwner)) return [];
+      siteProjects.set(project.id, project);
+      return [block];
+    }),
+  }));
 
   return {
     ...profile,
     categories: categories.map(({ category }) => category),
-    canvasElements: visibleCanvasElements,
-    ...(publishedGridLayout
-      ? { gridLayout: serializePublicGridLayout(publishedGridLayout, isOwner) }
-      : {}),
+    sections: visibleSections,
+    siteProjects: [...siteProjects.values()],
+    siteStyle: resolveSiteStyle(profile.siteStylePublished),
+    devlogEntries: buildLogEntries,
   };
 }

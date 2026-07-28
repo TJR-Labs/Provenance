@@ -258,7 +258,7 @@ function emptyFields() {
 }
 
 describe("legacy Grid layout migration", () => {
-  it("preserves profile section, project, and valid-link order in matching atomic copies", async () => {
+  it("leaves retired profile-scope Grid content untouched", async () => {
     const fixture = createMockDatabase({
       users: [
         {
@@ -288,73 +288,8 @@ describe("legacy Grid layout migration", () => {
     ).resolves.toBe("ready");
 
     const layouts = fixture.layouts();
-    expect(layouts.map(({ scope, state }) => ({ scope, state }))).toEqual([
-      { scope: "PROFILE", state: "DRAFT" },
-      { scope: "PROFILE", state: "PUBLISHED" },
-    ]);
-    expect(fixture.mocks.transaction).toHaveBeenCalledTimes(1);
-
-    const expected: GridBlock[] = [
-      {
-        key: "legacy-profile-link-0",
-        order: 0,
-        type: "LINK",
-        x: 0,
-        y: 0,
-        width: 2,
-        height: 1,
-        ...emptyFields(),
-        linkLabel: "First",
-        linkUrl: "https://example.com/first",
-      },
-      {
-        key: "legacy-profile-link-2",
-        order: 1,
-        type: "LINK",
-        x: 2,
-        y: 0,
-        width: 2,
-        height: 1,
-        ...emptyFields(),
-        linkLabel: "Third",
-        linkUrl: "https://example.com/third",
-      },
-      {
-        key: "legacy-profile-about",
-        order: 2,
-        type: "TEXT",
-        x: 4,
-        y: 0,
-        width: 2,
-        height: 1,
-        ...emptyFields(),
-        textContent: "  Original biography  ",
-      },
-      {
-        key: "legacy-profile-project-newer",
-        order: 3,
-        type: "PROJECT",
-        x: 6,
-        y: 0,
-        width: 3,
-        height: 2,
-        ...emptyFields(),
-        projectId: "newer",
-      },
-      {
-        key: "legacy-profile-project-older",
-        order: 4,
-        type: "PROJECT",
-        x: 9,
-        y: 0,
-        width: 3,
-        height: 2,
-        ...emptyFields(),
-        projectId: "older",
-      },
-    ];
-    expect(fixture.rows(layouts[0]!.id)).toEqual(expected);
-    expect(fixture.rows(layouts[1]!.id)).toEqual(expected);
+    expect(layouts).toEqual([]);
+    expect(fixture.mocks.transaction).not.toHaveBeenCalled();
   });
 
   it("preserves project description, media, and links with deterministic keys", async () => {
@@ -467,7 +402,7 @@ describe("legacy Grid layout migration", () => {
 
     await expect(
       ensureProfileGridLayouts("user-1", fixture.database),
-    ).resolves.toBe("oversized");
+    ).resolves.toBe("ready");
     await expect(
       ensureProjectGridLayout("video-project", fixture.database),
     ).resolves.toBe("video");
@@ -523,7 +458,7 @@ describe("legacy Grid layout migration", () => {
     expect(fixture.mocks.transaction).not.toHaveBeenCalled();
   });
 
-  it("initializes eligible profile and project layouts during editor-state loading", async () => {
+  it("initializes only project layouts during editor-state loading", async () => {
     const fixture = createMockDatabase({
       users: [
         {
@@ -541,29 +476,22 @@ describe("legacy Grid layout migration", () => {
       ],
     });
 
-    const profileEditor = await getProfileGridEditorState(
-      "user-1",
-      fixture.database,
-    );
+    await expect(
+      getProfileGridEditorState("user-1", fixture.database),
+    ).rejects.toThrow("This Grid layout is not available.");
     const projectEditor = await getProjectGridEditorState(
       "project-1",
       "user-1",
       fixture.database,
     );
 
-    expect(profileEditor.blocks).toEqual([
-      expect.objectContaining({
-        key: "legacy-profile-about",
-        textContent: "Lazy profile",
-      }),
-    ]);
     expect(projectEditor.blocks).toEqual([
       expect.objectContaining({
         key: "legacy-project-description",
         textContent: "Lazy project",
       }),
     ]);
-    expect(fixture.layouts()).toHaveLength(3);
+    expect(fixture.layouts()).toHaveLength(1);
   });
 
   it("reports exact bulk counts across migrated, existing, and fallback records", async () => {
@@ -631,9 +559,9 @@ describe("legacy Grid layout migration", () => {
     });
 
     await expect(migrateGridLayouts(fixture.database)).resolves.toEqual({
-      migratedProfiles: 1,
+      migratedProfiles: 0,
       migratedProjects: 1,
-      alreadyMigrated: 2,
+      alreadyMigrated: 1,
       skippedVideo: 1,
       skippedOversized: 1,
     });

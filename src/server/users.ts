@@ -4,7 +4,6 @@ import { Role, type Prisma, type PrismaClient } from "../../generated/prisma";
 import { z } from "zod";
 
 import { safeExternalUrl } from "~/app/safe-external-url";
-import { PROFILE_THEMES } from "~/lib/profile-theme";
 import {
   DuplicateEmailError,
   emailSchema,
@@ -92,9 +91,6 @@ export const profileLinkSchema = z.object({
     ),
 });
 
-export const profileThemes = PROFILE_THEMES;
-export const profileSections = ["about", "projects", "links"] as const;
-
 export const profileContentInputSchema = z.object({
   displayName: z.string().trim().min(1).max(80),
   bio: z.string().trim().max(2000).optional(),
@@ -104,8 +100,6 @@ export const profileContentInputSchema = z.object({
 });
 
 export const updateProfileInputSchema = profileContentInputSchema.extend({
-  theme: z.enum(profileThemes),
-  layoutSections: z.array(z.enum(profileSections)).max(profileSections.length),
   customCss: z.string().max(20_000).optional(),
   private: z.boolean().optional().default(false),
 });
@@ -781,8 +775,6 @@ export async function updateProfile(
       school: nullable(input.school),
       avatarUrl: nullable(input.avatarUrl),
       links: input.links,
-      theme: input.theme,
-      layoutSections: [...new Set(input.layoutSections)],
       customCss: nullable(input.customCss),
       private: input.private,
     },
@@ -794,8 +786,6 @@ export async function updateProfile(
       school: true,
       avatarUrl: true,
       links: true,
-      theme: true,
-      layoutSections: true,
       customCss: true,
       private: true,
     },

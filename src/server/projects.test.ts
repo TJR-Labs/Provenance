@@ -26,6 +26,7 @@ const projectInput = {
   title: "Project",
   description: "Description",
   category: "SOFTWARE_ENGINEER" as const,
+  status: "BUILDING" as const,
   hashtags: [],
   links: [],
   layout: "default" as const,
@@ -182,6 +183,19 @@ function storageLifecycleDatabase(options: { includeProject?: boolean } = {}) {
 }
 
 describe("owned project media lifecycle", () => {
+  it("passes status through delegate-only project creation", async () => {
+    type CreateArgs = { data: { status: string } };
+    const create = vi
+      .fn<(args: CreateArgs) => Promise<{ id: string }>>()
+      .mockResolvedValue({ id: "project-1" });
+
+    await createProject("user-1", { ...projectInput, status: "SHIPPED" }, {
+      create,
+    } as never);
+
+    expect(create.mock.calls[0]?.[0].data.status).toBe("SHIPPED");
+  });
+
   it("copies finalized intent metadata onto new owned ProjectMedia rows", async () => {
     const fixture = storageLifecycleDatabase({ includeProject: false });
     await createProject(
@@ -205,8 +219,12 @@ describe("owned project media lifecycle", () => {
     );
 
     const createInput = fixture.projectDelegate.create.mock.calls[0]?.[0] as {
-      data: { media: { create: Record<string, unknown>[] } };
+      data: {
+        status: string;
+        media: { create: Record<string, unknown>[] };
+      };
     };
+    expect(createInput.data.status).toBe("BUILDING");
     expect(createInput.data.media.create[0]).toMatchObject({
       storageBucket: "media",
       storagePath: "user-1/owned.png",
@@ -243,6 +261,10 @@ describe("owned project media lifecycle", () => {
 
     await updateProject("project-1", "user-1", projectInput, fixture.database);
 
+    const updateInput = fixture.projectDelegate.update.mock.calls[0]?.[0] as {
+      data: { status: string };
+    };
+    expect(updateInput.data.status).toBe("BUILDING");
     expect(fixture.pendingStorageDeletion.createMany).toHaveBeenCalledWith(
       expect.objectContaining({
         data: [expect.objectContaining({ reason: "project media replaced" })],
@@ -884,12 +906,16 @@ describe("listMyProjects", () => {
         {
           id: "project-2",
           title: "Second",
+          status: "SHIPPED",
+          category: "SOFTWARE_ENGINEER",
           createdAt: new Date("2026-07-17T00:00:00.000Z"),
           media: [{ url: "https://example.com/2.png" }],
         },
         {
           id: "project-1",
           title: "First",
+          status: "BUILDING",
+          category: "DESIGNER",
           createdAt: new Date("2026-07-16T00:00:00.000Z"),
           media: [],
         },
@@ -897,8 +923,8 @@ describe("listMyProjects", () => {
     };
     const users = {
       findUniqueOrThrow: vi.fn().mockResolvedValue({
-        canvasDraftSavedAt: null,
-        canvasPublishedAt: new Date("2026-07-16T12:00:00Z"),
+        siteDraftSavedAt: null,
+        sitePublishedAt: new Date("2026-07-16T12:00:00Z"),
       }),
     };
     const canvasElements = {
@@ -924,12 +950,16 @@ describe("listMyProjects", () => {
         {
           id: "project-2",
           title: "Second",
+          status: "SHIPPED",
+          category: "SOFTWARE_ENGINEER",
           thumbnailUrl: "https://example.com/2.png",
           placed: true,
         },
         {
           id: "project-1",
           title: "First",
+          status: "BUILDING",
+          category: "DESIGNER",
           thumbnailUrl: null,
           placed: false,
         },
@@ -942,14 +972,28 @@ describe("listMyProjects", () => {
     const tiedAt = new Date("2026-07-17T00:00:00.000Z");
     const projects = {
       findMany: vi.fn().mockResolvedValue([
-        { id: "project-b", title: "B", createdAt: tiedAt, media: [] },
-        { id: "project-a", title: "A", createdAt: tiedAt, media: [] },
+        {
+          id: "project-b",
+          title: "B",
+          status: "BUILDING",
+          category: "SOFTWARE_ENGINEER",
+          createdAt: tiedAt,
+          media: [],
+        },
+        {
+          id: "project-a",
+          title: "A",
+          status: "IDEA",
+          category: "DESIGNER",
+          createdAt: tiedAt,
+          media: [],
+        },
       ]),
     };
     const users = {
       findUniqueOrThrow: vi.fn().mockResolvedValue({
-        canvasDraftSavedAt: null,
-        canvasPublishedAt: null,
+        siteDraftSavedAt: null,
+        sitePublishedAt: null,
       }),
     };
     const canvasElements = { findMany: vi.fn() };
@@ -973,6 +1017,8 @@ describe("listMyProjects", () => {
         {
           id: "project-1",
           title: "Only",
+          status: "BUILDING",
+          category: "SOFTWARE_ENGINEER",
           createdAt: new Date("2026-07-17T00:00:00.000Z"),
           media: [],
         },
@@ -980,8 +1026,8 @@ describe("listMyProjects", () => {
     };
     const users = {
       findUniqueOrThrow: vi.fn().mockResolvedValue({
-        canvasDraftSavedAt: new Date("2026-07-17T00:00:00Z"),
-        canvasPublishedAt: new Date("2026-07-16T00:00:00Z"),
+        siteDraftSavedAt: new Date("2026-07-17T00:00:00Z"),
+        sitePublishedAt: new Date("2026-07-16T00:00:00Z"),
       }),
     };
     const canvasElements = {
@@ -992,10 +1038,13 @@ describe("listMyProjects", () => {
 
     expect(canvasElements.findMany).toHaveBeenCalledWith({
       where: {
-        userId: "user-1",
-        state: "DRAFT",
         type: "PROJECT",
         projectId: { in: ["project-1"] },
+        section: {
+          userId: "user-1",
+          state: "DRAFT",
+          kind: "PROJECT_GRID",
+        },
       },
       select: { projectId: true },
     });
@@ -1005,8 +1054,8 @@ describe("listMyProjects", () => {
     const projects = { findMany: vi.fn().mockResolvedValue([]) };
     const users = {
       findUniqueOrThrow: vi.fn().mockResolvedValue({
-        canvasDraftSavedAt: null,
-        canvasPublishedAt: null,
+        siteDraftSavedAt: null,
+        sitePublishedAt: null,
       }),
     };
     const canvasElements = { findMany: vi.fn() };

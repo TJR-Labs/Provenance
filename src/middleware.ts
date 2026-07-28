@@ -38,10 +38,19 @@ export function middleware(request: NextRequest) {
   // element's third-party favicon-by-domain lookup (s2/favicons) redirects to
   // a gstatic.com host to serve the actual icon — see
   // specs/canvas-editor-refinements.md requirement 7.
-  const cspHeader = `default-src 'self'; script-src ${scriptSrc}; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://www.google.com https://*.gstatic.com; font-src 'self'; connect-src 'self' https://us.i.posthog.com https://us-assets.i.posthog.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'`;
+  //
+  // frame-src exists solely for the Embed block: without it, `default-src
+  // 'self'` would block every iframe the editor lets a user place. It is a
+  // narrow allowlist and MUST stay byte-for-byte in sync with
+  // EMBED_ALLOWED_HOSTS in src/lib/site-style.ts, which is what the editor and
+  // the server-side zod schema validate embedUrl against. If a host is added
+  // or removed there, change it here too — otherwise an embed the app happily
+  // saves will silently fail to render behind CSP.
+  const cspHeader = `default-src 'self'; script-src ${scriptSrc}; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://www.google.com https://*.gstatic.com; frame-src https://www.youtube.com https://player.vimeo.com https://codepen.io https://www.figma.com https://open.spotify.com https://www.loom.com; font-src 'self'; connect-src 'self' https://us.i.posthog.com https://us-assets.i.posthog.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'`;
 
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);
+  requestHeaders.set("x-pathname", request.nextUrl.pathname);
   requestHeaders.set("Content-Security-Policy", cspHeader);
 
   const response = NextResponse.next({

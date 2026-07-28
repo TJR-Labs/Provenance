@@ -132,7 +132,7 @@ export const projectRouter = createTRPCRouter({
         ctx.session.user.id,
         ctx.db.project,
         ctx.db.user,
-        ctx.db.canvasElement,
+        ctx.db.block,
         input,
       ),
     ),

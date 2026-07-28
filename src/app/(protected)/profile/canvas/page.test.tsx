@@ -1,68 +1,41 @@
 /**
  * @vitest-environment jsdom
  */
-import type { ReactNode } from "react";
 import { cleanup, render, screen } from "@testing-library/react";
-import { TRPCError } from "@trpc/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import CanvasEditorPage from "./page";
 
 const mocks = vi.hoisted(() => ({
-  profileMe: vi.fn(),
-  profileEditorState: vi.fn(),
-}));
-
-vi.mock("next/link", () => ({
-  default: ({ children, href }: { children: ReactNode; href: string }) => (
-    <a href={href}>{children}</a>
-  ),
+  getEditorState: vi.fn(),
 }));
 
 vi.mock("~/server/api/caller", () => ({
   getServerCaller: async () => ({
-    profile: { me: mocks.profileMe },
-    project: { listByUsername: vi.fn() },
-    grid: { profileEditorState: mocks.profileEditorState },
+    site: { getEditorState: mocks.getEditorState },
   }),
 }));
 
-vi.mock("~/app/grid-layout-editor", () => ({
-  GridLayoutEditor: () => <div data-testid="grid-layout-editor" />,
-}));
-
-vi.mock("./canvas-editor", () => ({
-  CanvasEditor: () => <div data-testid="canvas-editor" />,
-}));
-
-vi.mock("./layout-mode-toggle", () => ({
-  LayoutModeToggle: () => <div data-testid="layout-mode-toggle" />,
+vi.mock("./site-editor", () => ({
+  SiteEditor: ({ initialState }: { initialState: { username: string } }) => (
+    <div data-testid="site-editor">{initialState.username}</div>
+  ),
 }));
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.profileMe.mockResolvedValue({
-    username: "legacy-owner",
-    layoutMode: "GRID",
-  });
-  mocks.profileEditorState.mockRejectedValue(
-    new TRPCError({ code: "NOT_FOUND" }),
-  );
+  mocks.getEditorState.mockResolvedValue({ username: "owner" });
 });
 
 afterEach(() => {
   cleanup();
 });
 
-describe("CanvasEditorPage legacy Grid fallback", () => {
-  it("keeps an oversized published profile out of the Grid editor", async () => {
+describe("CanvasEditorPage", () => {
+  it("loads the unified site editor state and renders one editor", async () => {
     render(await CanvasEditorPage());
 
-    expect(screen.queryByTestId("grid-layout-editor")).toBeNull();
-    expect(
-      screen.getByText(
-        /existing layout remains published.*exceeds the 50-block editor limit/i,
-      ),
-    ).not.toBeNull();
+    expect(mocks.getEditorState).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("site-editor").textContent).toBe("owner");
   });
 });

@@ -3,8 +3,8 @@
  *
  * Component tests for the profile editor's content-editing surfaces: the
  * Label+URL link row form (with inline safeExternalUrl validation), the
- * collapsed-by-default Custom CSS disclosure, and the theme swatches. Runs in
- * jsdom via the docblock so the rest of the suite keeps its node environment.
+ * collapsed-by-default Custom CSS disclosure. Runs in jsdom via the docblock
+ * so the rest of the suite keeps its node environment.
  */
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -12,20 +12,6 @@ import { type ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProfileForm } from "./profile-form";
-
-vi.mock("~/trpc/react", () => ({
-  api: {
-    canvas: {
-      setMode: {
-        useMutation: () => ({
-          mutate: vi.fn(),
-          isPending: false,
-          isError: false,
-        }),
-      },
-    },
-  },
-}));
 
 vi.mock("next/link", () => ({
   default: ({
@@ -52,9 +38,6 @@ function baseInitial(overrides: Partial<Init> = {}): Init {
     school: "",
     avatarUrl: "",
     links: [],
-    theme: "default",
-    sections: ["about", "projects", "links"],
-    layoutMode: "GRID",
     customCss: "",
     private: false,
     ...overrides,
@@ -163,34 +146,11 @@ describe("the Custom CSS disclosure", () => {
   });
 });
 
-describe("the theme swatches", () => {
-  it("renders a labeled swatch control for each built-in theme", () => {
+describe("retired presentation controls", () => {
+  it("leaves theme and section visibility to the site editor", () => {
     renderForm();
-    for (const label of [
-      /Default dark/,
-      /Paper light/,
-      /Indigo studio/,
-      /Ember warm/,
-      /Rose blush/,
-      /Mist cool/,
-      /Terminal mono/,
-    ]) {
-      expect(screen.getByRole("button", { name: label })).not.toBeNull();
-    }
-  });
-
-  it("marks the saved theme's swatch as pressed and updates the select on click", async () => {
-    const user = userEvent.setup();
-    renderForm({ theme: "default" });
-    const paper = screen.getByRole("button", { name: /Paper light/ });
-    expect(paper.getAttribute("aria-pressed")).toBe("false");
-
-    await user.click(paper);
-
-    expect(paper.getAttribute("aria-pressed")).toBe("true");
-    const select = document.querySelector<HTMLSelectElement>(
-      'select[name="theme"]',
-    );
-    expect(select?.value).toBe("paper");
+    expect(document.querySelector('[name="theme"]')).toBeNull();
+    expect(document.querySelector('[name="sections"]')).toBeNull();
+    expect(screen.queryByText("Profile sections")).toBeNull();
   });
 });

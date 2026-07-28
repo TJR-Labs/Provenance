@@ -1,29 +1,24 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { GridLayoutRenderer } from "~/app/grid-layout-renderer";
-import { ProjectCard } from "~/app/project-card";
 import { reportProfileAction } from "~/app/report-actions";
-import { safeExternalUrl } from "~/app/safe-external-url";
-import { profileBackgroundStyle, profileThemeClass } from "~/lib/profile-theme";
 import { getServerCaller } from "~/server/api/caller";
 import { auth } from "~/server/auth";
 import { categoryLabels } from "~/server/categories";
 import { profileScopeClass, sanitizeCustomCss } from "~/server/sanitize-css";
-import { profileSections } from "~/server/users";
-import { CanvasProfileLayout, type ProfileLink } from "./canvas-profile-view";
 import { OnboardingChecklist } from "./onboarding-checklist";
 import { SavedConfirmation } from "./saved-confirmation";
+import { SiteView, type SiteLink } from "./site-view";
 
 type ProfilePageProps = {
   params: Promise<{ username: string }>;
   searchParams: Promise<{ reported?: string; saved?: string }>;
 };
 
-function readLinks(value: unknown): ProfileLink[] {
+function readLinks(value: unknown): SiteLink[] {
   if (!Array.isArray(value)) return [];
   return value.filter(
-    (item): item is ProfileLink =>
+    (item): item is SiteLink =>
       isRecord(item) &&
       typeof item.label === "string" &&
       typeof item.url === "string",
@@ -32,13 +27,6 @@ function readLinks(value: unknown): ProfileLink[] {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
-}
-
-function readSections(value: unknown) {
-  if (!Array.isArray(value)) return [...profileSections];
-  return value.filter((item): item is (typeof profileSections)[number] =>
-    profileSections.includes(item as (typeof profileSections)[number]),
-  );
 }
 
 function PrivateProfileNotice({ username }: { username: string }) {
@@ -75,12 +63,10 @@ export default async function ProfilePage({
   }
 
   const links = readLinks(profile.links);
-  const sections = readSections(profile.layoutSections);
   const scope = profileScopeClass(profile.username);
   const css = profile.customCss
     ? sanitizeCustomCss(profile.customCss, profile.username)
     : "";
-  const theme = profileThemeClass(profile.theme);
   const reportAction = reportProfileAction.bind(null, profile.username);
   const onboarding =
     session?.user.id === profile.id
@@ -89,14 +75,8 @@ export default async function ProfilePage({
 
   return (
     <div
-      className={`${scope} ${theme} bg-canvas text-ink min-h-full flex-1`}
-      style={{
-        contain: "layout",
-        ...profileBackgroundStyle(
-          profile.canvasBackgroundColor,
-          profile.canvasBackgroundImageUrl,
-        ),
-      }}
+      className={`${scope} bg-canvas text-ink min-h-full flex-1`}
+      style={{ contain: "layout" }}
     >
       {css ? <style dangerouslySetInnerHTML={{ __html: css }} /> : null}
       <section className="mx-auto w-full max-w-6xl px-6 py-14">
@@ -165,109 +145,19 @@ export default async function ProfilePage({
           </div>
         ) : null}
 
-        {profile.layoutMode === "CANVAS" ? (
-          <CanvasProfileLayout
-            elements={profile.canvasElements}
-            bio={profile.bio}
-            links={links}
-            identity={{
-              displayName: profile.displayName,
-              username: profile.username,
-              school: profile.school,
-              avatarUrl: profile.avatarUrl,
-              categories: profile.categories,
-            }}
-          />
-        ) : profile.gridLayout ? (
-          <GridLayoutRenderer
-            blocks={profile.gridLayout.blocks}
-            projects={profile.gridLayout.projects}
-            mode="responsive"
-            ownerView={session?.user.id === profile.id}
-          />
-        ) : (
-          sections.map((section) => {
-            if (section === "about") {
-              return (
-                <div key={section} className="mt-12 max-w-3xl">
-                  <h2 className="font-display text-2xl font-semibold">About</h2>
-                  <p className="profile-muted text-muted mt-4 leading-7 break-words whitespace-pre-wrap">
-                    {profile.bio ?? "This person has not added a bio yet."}
-                  </p>
-                </div>
-              );
-            }
-            if (section === "links") {
-              return (
-                <div key={section} className="mt-12">
-                  <h2 className="font-display text-2xl font-semibold">Links</h2>
-                  {links.length ? (
-                    <div className="mt-4 flex flex-wrap gap-3">
-                      {links.map((link) => {
-                        const href = safeExternalUrl(link.url);
-                        return href ? (
-                          <a
-                            key={`${link.label}-${link.url}`}
-                            href={href}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="border-line-strong hover:border-accent hover:text-accent max-w-full truncate rounded-md border px-4 py-2 font-medium transition-colors"
-                          >
-                            {link.label}
-                          </a>
-                        ) : (
-                          <span
-                            key={`${link.label}-${link.url}`}
-                            className="border-line text-faint max-w-full truncate rounded-md border px-4 py-2"
-                          >
-                            {link.label}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="profile-muted text-muted mt-4">
-                      No links added.
-                    </p>
-                  )}
-                </div>
-              );
-            }
-            return (
-              <div key={section} className="mt-12">
-                <div className="flex items-center justify-between gap-4">
-                  <h2 className="font-display text-2xl font-semibold">
-                    Projects
-                  </h2>
-                  {session?.user.id === profile.id ? (
-                    <Link
-                      href="/projects/new"
-                      className="text-accent hover:text-accent-strong text-sm font-semibold transition-colors"
-                    >
-                      Add project
-                    </Link>
-                  ) : null}
-                </div>
-                {profile.projects.length ? (
-                  <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                    {profile.projects.map((project) => (
-                      <ProjectCard key={project.id} project={project} />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="border-line-strong mt-6 rounded-lg border border-dashed px-6 py-14 text-center">
-                    <p className="text-faint font-mono text-xs tracking-[0.14em] uppercase">
-                      No records yet
-                    </p>
-                    <p className="profile-muted text-muted mt-3">
-                      No projects yet.
-                    </p>
-                  </div>
-                )}
-              </div>
-            );
-          })
-        )}
+        <SiteView
+          sections={profile.sections}
+          style={profile.siteStyle}
+          identity={{
+            displayName: profile.displayName,
+            avatarUrl: profile.avatarUrl,
+            bio: profile.bio,
+            links,
+          }}
+          projects={profile.siteProjects}
+          devlogEntries={profile.devlogEntries}
+          ownerView={session?.user.id === profile.id}
+        />
 
         <div className="rule-double mt-16 pt-8">
           {session ? (

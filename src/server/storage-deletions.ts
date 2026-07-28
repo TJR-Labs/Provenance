@@ -107,10 +107,7 @@ async function reconcileOne(
             owner?.resultUrl
               ? transaction.user.count({
                   where: {
-                    OR: [
-                      { canvasBackgroundImageUrl: owner.resultUrl },
-                      { avatarUrl: owner.resultUrl },
-                    ],
+                    avatarUrl: owner.resultUrl,
                   },
                 })
               : Promise.resolve(0),
